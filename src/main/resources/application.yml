@@ -1,0 +1,35 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: fiscalimplify
+  datasource:
+    url: jdbc:postgresql://localhost:5432/fiscaldb
+    username: postgres
+    password: postgres
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 1
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+    open-in-view: false
+
+# --- Nuvem Fiscal API (SANDBOX - ambiente de teste)
+# Documentação: https://dev.nuvemfiscal.com.br/docs/api
+# Endpoint token: https://auth.nuvemfiscal.com.br/oauth/token (base sem path)
+nuvemfiscal:
+  auth-url: https://auth.nuvemfiscal.com.br
+  base-url: https://api.sandbox.nuvemfiscal.com.br
+  client-id: ${NUVEM_CLIENT_ID:seu_client_id_sandbox}
+  client-secret: ${NUVEM_CLIENT_SECRET:seu_client_secret_sandbox}
+  ambiente: homologacao
+  connect-timeout: 10000
+  read-timeout: 30000

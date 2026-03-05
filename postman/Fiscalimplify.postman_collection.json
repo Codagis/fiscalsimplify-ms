@@ -1,0 +1,372 @@
+{
+  "info": {
+    "name": "Fiscalimplify - API Notas Fiscais",
+    "description": "Collection para testar a API de geração de NFe e NFCe (ambiente homologação SEFAZ).\n\n**Formato do JSON:** A API aceita estrutura simplificada (itens, pagamentos, destinatario). O backend converte para infNFe/det/pag.detPag da Nuvem Fiscal.\n\n**Ordem:** 1) Cadastrar Empresa 2) Cadastrar Certificado 3) Configurar NF-e (se emitir NF-e) 4) Configurar NFC-e (se emitir NFC-e) 5) Emitir NFe ou NFCe",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "cnpjEmitente",
+      "value": "11222333000181"
+    },
+    {
+      "key": "nfeId",
+      "value": ""
+    },
+    {
+      "key": "nfceId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Empresas",
+      "item": [
+        {
+          "name": "01 - Cadastrar Empresa",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    const body = pm.response.json();",
+                  "    pm.collectionVariables.set('cnpjEmitente', body.cnpj);",
+                  "    console.log('CNPJ salvo para emissão de notas: ' + body.cnpj);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cnpj\": \"11222333000181\",\n  \"razaoSocial\": \"EMPRESA TESTE LTDA\",\n  \"nomeFantasia\": \"Empresa Teste\",\n  \"inscricaoEstadual\": \"ISENTO\",\n  \"uf\": \"CE\",\n  \"codigoMunicipio\": \"2304400\",\n  \"crt\": 3\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/companies",
+              "host": ["{{baseUrl}}"],
+              "path": ["companies"]
+            },
+            "description": "Cadastra empresa na API e na Nuvem Fiscal (sandbox). O CNPJ é salvo automaticamente para usar nas próximas requisições."
+          }
+        },
+        {
+          "name": "02 - Listar Empresas",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/companies",
+              "host": ["{{baseUrl}}"],
+              "path": ["companies"]
+            }
+          }
+        },
+        {
+          "name": "03 - Buscar Empresa por CNPJ",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/companies/cnpj/{{cnpjEmitente}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["companies", "cnpj", "{{cnpjEmitente}}"]
+            }
+          }
+        },
+        {
+          "name": "03b - Atualizar IE da Empresa",
+          "request": {
+            "method": "PATCH",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"inscricaoEstadual\": \"123456789\",\n  \"uf\": \"CE\",\n  \"codigoMunicipio\": \"2304400\",\n  \"crt\": 3\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/companies/{{cnpjEmitente}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["companies", "{{cnpjEmitente}}"]
+            }
+          },
+          "description": "Atualiza a Inscrição Estadual (IE) da empresa. Use 'ISENTO' se for isenta."
+        },
+        {
+          "name": "04 - Cadastrar Certificado Digital",
+          "request": {
+            "method": "PUT",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"certificado\": \"COLOQUE_AQUI_O_BASE64_DO_ARQUIVO_PFX\",\n  \"password\": \"senha_do_certificado\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/companies/{{cnpjEmitente}}/certificado",
+              "host": ["{{baseUrl}}"],
+              "path": ["companies", "{{cnpjEmitente}}", "certificado"]
+            }
+          },
+          "description": "Cadastra certificado A1 (.pfx/.p12) na Nuvem Fiscal. OBRIGATÓRIO antes de emitir NFe/NFC-e. Converte o .pfx para Base64."
+        },
+        {
+          "name": "05 - Configurar NF-e",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"crt\": 3,\n  \"ambiente\": \"homologacao\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/companies/{{cnpjEmitente}}/nfe/config",
+              "host": ["{{baseUrl}}"],
+              "path": ["companies", "{{cnpjEmitente}}", "nfe", "config"]
+            }
+          },
+          "description": "Configura NF-e na Nuvem Fiscal. OBRIGATÓRIO antes de emitir NF-e. CRT: 1=Simples, 2=Simples excesso sublimite, 3=Regime Normal, 4=MEI."
+        },
+        {
+          "name": "06 - Configurar NFC-e",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"crt\": 3,\n  \"idCsc\": 0,\n  \"csc\": \"OBTENHA_NA_SEFAZ_DO_ESTADO\",\n  \"ambiente\": \"homologacao\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/companies/{{cnpjEmitente}}/nfce/config",
+              "host": ["{{baseUrl}}"],
+              "path": ["companies", "{{cnpjEmitente}}", "nfce", "config"]
+            }
+          },
+          "description": "Configura NFC-e na Nuvem Fiscal. OBRIGATÓRIO antes de emitir NFC-e. O CSC deve ser obtido na SEFAZ do estado."
+        }
+      ]
+    },
+    {
+      "name": "NF-e",
+      "item": [
+        {
+          "name": "01 - Emitir NF-e (Completa)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  if (body.id) pm.collectionVariables.set('nfeId', body.id);",
+                  "  console.log('NF-e id salvo: ' + body.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cnpjEmitente\": \"{{cnpjEmitente}}\",\n  \"ieEmitente\": \"ISENTO\",\n  \"serie\": 1,\n  \"naturezaOperacao\": \"VENDA DE MERCADORIA\",\n  \"destinatario\": {\n    \"cnpj\": \"00000000000191\",\n    \"nome\": \"EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL\",\n    \"ie\": \"123456789\",\n    \"logradouro\": \"Rua Teste\",\n    \"numero\": \"100\",\n    \"bairro\": \"Centro\",\n    \"municipio\": \"SAO PAULO\",\n    \"uf\": \"SP\",\n    \"cep\": \"01001000\"\n  },\n  \"itens\": [\n    {\n      \"descricao\": \"PRODUTO TESTE HOMOLOGACAO\",\n      \"ncm\": \"61091000\",\n      \"cfop\": \"5102\",\n      \"cst\": \"00\",\n      \"quantidade\": 2,\n      \"valorUnitario\": 49.90\n    },\n    {\n      \"descricao\": \"SERVICO TESTE HOMOLOGACAO\",\n      \"ncm\": \"73181500\",\n      \"cfop\": \"5102\",\n      \"cst\": \"00\",\n      \"quantidade\": 1,\n      \"valorUnitario\": 25.00\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/nfe",
+              "host": ["{{baseUrl}}"],
+              "path": ["nfe"]
+            },
+            "description": "Emite NF-e completa para homologação SEFAZ. O nome do destinatário segue o padrão exigido: \"EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL\". O id é salvo em {{nfeId}}."
+          }
+        },
+        {
+          "name": "01b - Obter PDF da NF-e (DANFE)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/nfe/{{nfeId}}/pdf",
+              "host": ["{{baseUrl}}"],
+              "path": ["nfe", "{{nfeId}}", "pdf"]
+            }
+          },
+          "description": "Obtém o PDF (DANFE padrão SEFAZ) da NF-e autorizada. Use Send and Download para salvar. Imprima o PDF gerado."
+        },
+        {
+          "name": "02 - Emitir NF-e (Destinatário CPF)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  if (body.id) pm.collectionVariables.set('nfeId', body.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cnpjEmitente\": \"{{cnpjEmitente}}\",\n  \"ieEmitente\": \"ISENTO\",\n  \"serie\": 1,\n  \"naturezaOperacao\": \"VENDA DE MERCADORIA\",\n  \"destinatario\": {\n    \"cpf\": \"12345678909\",\n    \"nome\": \"EMITIDA EM AMBIENTE DE HOMOLOGACAO - SEM VALOR FISCAL\",\n    \"logradouro\": \"Av Brasil\",\n    \"numero\": \"500\",\n    \"bairro\": \"Jardim\",\n    \"municipio\": \"CAMPINAS\",\n    \"uf\": \"SP\",\n    \"cep\": \"13010000\"\n  },\n  \"itens\": [\n    {\n      \"descricao\": \"ITEM UNICO HOMOLOGACAO\",\n      \"ncm\": \"84713012\",\n      \"cfop\": \"5102\",\n      \"cst\": \"00\",\n      \"quantidade\": 1,\n      \"valorUnitario\": 199.90\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/nfe",
+              "host": ["{{baseUrl}}"],
+              "path": ["nfe"]
+            },
+            "description": "Emite NF-e com destinatário pessoa física (CPF). O id é salvo em {{nfeId}}."
+          }
+        }
+      ]
+    },
+    {
+      "name": "NFC-e",
+      "item": [
+        {
+          "name": "01 - Emitir NFC-e (Completa)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  if (body.id) pm.collectionVariables.set('nfceId', body.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cnpjEmitente\": \"{{cnpjEmitente}}\",\n  \"ieEmitente\": \"ISENTO\",\n  \"serie\": 1,\n  \"naturezaOperacao\": \"VENDA AO CONSUMIDOR\",\n  \"itens\": [\n    {\n      \"descricao\": \"REFRIGERANTE 2L HOMOLOGACAO\",\n      \"ncm\": \"22021000\",\n      \"cfop\": \"5102\",\n      \"cst\": \"00\",\n      \"quantidade\": 3,\n      \"valorUnitario\": 8.90\n    },\n    {\n      \"descricao\": \"SALGADO ASSADO HOMOLOGACAO\",\n      \"ncm\": \"19053100\",\n      \"cfop\": \"5102\",\n      \"cst\": \"00\",\n      \"quantidade\": 2,\n      \"valorUnitario\": 6.50\n    }\n  ],\n  \"pagamentos\": [\n    {\n      \"forma\": \"03\",\n      \"valor\": 40.20\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/nfce",
+              "host": ["{{baseUrl}}"],
+              "path": ["nfce"]
+            },
+            "description": "Emite NFC-e completa. Forma pagamento: 01=dinheiro, 03=cartão crédito, 04=cartão débito. O id é salvo em {{nfceId}}."
+          }
+        },
+        {
+          "name": "01b - Obter PDF da NFC-e",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/nfce/{{nfceId}}/pdf",
+              "host": ["{{baseUrl}}"],
+              "path": ["nfce", "{{nfceId}}", "pdf"]
+            }
+          },
+          "description": "Obtém o PDF (DANFC-e) da NFC-e emitida. Use o id da resposta da emissão ou {{nfceId}}."
+        },
+        {
+          "name": "02 - Emitir NFC-e (Múltiplos Pagamentos)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cnpjEmitente\": \"{{cnpjEmitente}}\",\n  \"ieEmitente\": \"ISENTO\",\n  \"serie\": 1,\n  \"naturezaOperacao\": \"VENDA AO CONSUMIDOR\",\n  \"itens\": [\n    {\n      \"descricao\": \"COMBO TESTE HOMOLOGACAO\",\n      \"ncm\": \"22021000\",\n      \"cfop\": \"5102\",\n      \"cst\": \"00\",\n      \"quantidade\": 1,\n      \"valorUnitario\": 15.00\n    }\n  ],\n  \"pagamentos\": [\n    {\n      \"forma\": \"01\",\n      \"valor\": 10.00\n    },\n    {\n      \"forma\": \"04\",\n      \"valor\": 5.00\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/nfce",
+              "host": ["{{baseUrl}}"],
+              "path": ["nfce"]
+            },
+            "description": "NFC-e com pagamento misto: dinheiro + cartão débito."
+          }
+        },
+        {
+          "name": "03 - Emitir NFC-e (Com Destinatário)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  if (body.id) pm.collectionVariables.set('nfceId', body.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cnpjEmitente\": \"{{cnpjEmitente}}\",\n  \"ieEmitente\": \"ISENTO\",\n  \"serie\": 1,\n  \"naturezaOperacao\": \"VENDA AO CONSUMIDOR\",\n  \"destinatario\": {\n    \"cpf\": \"12345678909\",\n    \"nome\": \"JOAO DA SILVA\",\n    \"logradouro\": \"Rua das Flores\",\n    \"numero\": \"100\",\n    \"bairro\": \"Centro\",\n    \"municipio\": \"FORTALEZA\",\n    \"uf\": \"CE\",\n    \"cep\": \"60000000\"\n  },\n  \"itens\": [\n    {\n      \"descricao\": \"PRODUTO TESTE HOMOLOGACAO\",\n      \"ncm\": \"22021000\",\n      \"cfop\": \"5102\",\n      \"cst\": \"00\",\n      \"quantidade\": 2,\n      \"valorUnitario\": 15.00\n    }\n  ],\n  \"pagamentos\": [\n    {\n      \"forma\": \"01\",\n      \"valor\": 30.00\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/nfce",
+              "host": ["{{baseUrl}}"],
+              "path": ["nfce"]
+            },
+            "description": "Emite NFC-e com destinatário identificado (CPF ou CNPJ). O destinatário é opcional na NFC-e."
+          }
+        }
+      ]
+    }
+  ]
+}
