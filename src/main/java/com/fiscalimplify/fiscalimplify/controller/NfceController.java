@@ -32,6 +32,7 @@ public class NfceController {
         return ResponseEntity.ok(fiscalService.emitirNfce(request));
     }
 
+
     @GetMapping("/{id}/pdf")
     public ResponseEntity<byte[]> obterPdf(
             @PathVariable String id,
