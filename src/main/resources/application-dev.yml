@@ -1,0 +1,7 @@
+fiscalimplify:
+  api:
+    key: ${FISCAL_IMPLIFY_API_KEY:dev-api-key-vendalume}
+  webhook:
+    secret: ${FISCAL_IMPLIFY_WEBHOOK_SECRET:dev-webhook-secret}
+  security:
+    disable: ${FISCAL_IMPLIFY_SECURITY_DISABLE:false}

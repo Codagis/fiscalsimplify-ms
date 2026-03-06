@@ -1,5 +1,6 @@
 package com.fiscalimplify.fiscalimplify.controller;
 
+import com.fiscalimplify.fiscalimplify.documentation.DefaultApiResponses;
 import com.fiscalimplify.fiscalimplify.dto.NfeRequest;
 import com.fiscalimplify.fiscalimplify.service.FiscalService;
 import jakarta.validation.Valid;
@@ -8,17 +9,21 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
 
 /**
- * Controller REST responsável pela emissão de NF-e (Nota Fiscal Eletrônica)
- * e obtenção do PDF (DANFE) via API Nuvem Fiscal.
+ * Controller de emissão de NF-e e obtenção do PDF via API Nuvem Fiscal.
  *
- * @author Fiscalimplify
- * @version 1.0
+ * @author VendaLume
+ * @version 1.0.0
+ * @since 2025-02-16
  */
+@Tag(name = "NF-e", description = "Emissão de NF-e e obtenção de PDF (DANFE)")
+@DefaultApiResponses
 @RestController
 @RequestMapping("/nfe")
 @RequiredArgsConstructor
@@ -27,11 +32,13 @@ public class NfeController {
 
     private final FiscalService fiscalService;
 
+    @Operation(summary = "Emitir NF-e")
     @PostMapping
     public ResponseEntity<Map<String, Object>> emitir(@Valid @RequestBody NfeRequest request) {
         return ResponseEntity.ok(fiscalService.emitirNfe(request));
     }
 
+    @Operation(summary = "Obter PDF da NF-e (DANFE)")
     @GetMapping("/{id}/pdf")
     public ResponseEntity<byte[]> obterPdf(
             @PathVariable String id,

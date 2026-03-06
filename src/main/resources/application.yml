@@ -22,9 +22,14 @@ spring:
         dialect: org.hibernate.dialect.PostgreSQLDialect
     open-in-view: false
 
-# --- Nuvem Fiscal API (SANDBOX - ambiente de teste)
-# Documentação: https://dev.nuvemfiscal.com.br/docs/api
-# Endpoint token: https://auth.nuvemfiscal.com.br/oauth/token (base sem path)
+fiscalimplify:
+  api:
+    key: ${FISCAL_IMPLIFY_API_KEY:}
+  webhook:
+    secret: ${FISCAL_IMPLIFY_WEBHOOK_SECRET:}
+  security:
+    disable: ${FISCAL_IMPLIFY_SECURITY_DISABLE:false}
+
 nuvemfiscal:
   auth-url: https://auth.nuvemfiscal.com.br
   base-url: https://api.sandbox.nuvemfiscal.com.br
@@ -33,3 +38,15 @@ nuvemfiscal:
   ambiente: homologacao
   connect-timeout: 10000
   read-timeout: 30000
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+    enabled: true
+  swagger-ui:
+    path: /swagger-ui.html
+    operationsSorter: method
+    tagsSorter: alpha
+    display-request-duration: true
+    filter: true
+    try-it-out-enabled: true

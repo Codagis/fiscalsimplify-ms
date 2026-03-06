@@ -48,7 +48,6 @@ public class FiscalService {
     private static final int UF_PADRAO = 35;
     private static final String IE_ISENTO = "ISENTO";
     private static final String CNPJ_TESTE_HOMOLOG = "00000000000191";
-    /** CPF para consumidor final não identificado (obrigatório no schema dest) */
     private static final String CPF_CONSUMIDOR_FINAL = "00000000191";
     private static final String NAT_OP_PADRAO = "VENDA";
     private static final String VER_PROC = "Fiscalimplify-1.0";
@@ -88,13 +87,6 @@ public class FiscalService {
         return executarPostJson(URI_NFE, body, () -> log.debug("NF-e enviada com sucesso"));
     }
 
-    /**
-     * Busca o PDF da NFC-e na Nuvem Fiscal.
-     * Faz retry com delay quando o XML ainda não está disponível (EventoDfeXmlNotFound),
-     * pois a geração do PDF pode levar alguns segundos após a emissão.
-     * Se após todas as tentativas o PDF não estiver disponível, lança RegraNegocioException
-     * para retornar 422 com mensagem amigável em vez de 500.
-     */
     public byte[] buscarPdfNfce(String id) {
         log.info("Buscando PDF da NFC-e: {}", id);
         int maxTentativas = 8;
@@ -126,11 +118,6 @@ public class FiscalService {
         throw new RegraNegocioException("PDF da NFC-e não disponível após " + maxTentativas + " tentativas. Tente novamente em alguns instantes.");
     }
 
-    /**
-     * Busca o PDF da NF-e na Nuvem Fiscal.
-     * Faz retry com delay quando o XML ainda não está disponível (EventoDfeXmlNotFound),
-     * pois a geração do PDF pode levar alguns segundos após a emissão.
-     */
     public byte[] buscarPdfNfe(String id) {
         log.info("Buscando PDF da NF-e: {}", id);
         int maxTentativas = 8;
@@ -198,9 +185,6 @@ public class FiscalService {
         BigDecimal totalPago = request.getPagamentos().stream()
                 .map(PagamentoRequest::getValor)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        // SEFAZ exige: vNF = vProd - vDesc (+ vFrete etc). vNF é o total comercial da NF, não o valor efetivamente pago.
-        // Se o cliente paga menos (desconto): vDesc = vProd - totalPago, vNF = totalPago.
-        // Se o cliente paga mais (juros/taxa): vDesc = 0, vNF = vProd (o acréscimo não compõe vNF).
         BigDecimal vDesc = vProd.compareTo(totalPago) > 0 ? vProd.subtract(totalPago) : BigDecimal.ZERO;
         BigDecimal vNF = vProd.subtract(vDesc);
 
@@ -350,10 +334,6 @@ public class FiscalService {
         return mapearDetComDesconto(itens, crt, null, null);
     }
 
-    /**
-     * Monta os itens (det) da NFC-e. Quando vDescTotal > 0, distribui o desconto pelos itens
-     * proporcionalmente ao vProd de cada um, para que a SEFAZ valide: "Total do Desconto = somatório dos itens".
-     */
     private List<Map<String, Object>> mapearDetComDesconto(List<ItemRequest> itens, int crt, BigDecimal vProdTotal, BigDecimal vDescTotal) {
         boolean simplesNacional = (crt == 1 || crt == 4);
         List<Map<String, Object>> det = new ArrayList<>();
@@ -448,21 +428,6 @@ public class FiscalService {
                 .toList();
     }
 
-    /**
-     * Formas de pagamento na NFC-e (modelo 65), alinhado ao MOC e à IN SEFAZ-CE.
-     * <p>
-     * <b>PIX (tPag = "17")</b><br>
-     * Não é obrigatório enviar: CNPJ adquirente, código de autorização, bandeira, NSU, grupo &lt;card&gt;.
-     * Esses campos são exigidos apenas para tPag "03" (Cartão de Crédito) e "04" (Cartão de Débito),
-     * conforme Manual de Orientação do Contribuinte (MOC) da NFC-e.
-     * <p>
-     * <b>Ceará (SEFAZ-CE)</b><br>
-     * A IN 87/2025 (vinculação de meios de pagamento) dispensa <i>PIX estático</i> e formas que não
-     * gerem código de autorização único por transação. Para PIX enviamos apenas tPag e vPag, sem
-     * grupo card/adquirente, para não ser interpretado como pagamento eletrônico integrado (cartão).
-     * <p>
-     * Para PIX: apenas tPag "17" e vPag. Para 03/04: bloco card só quando houver dados completos.
-     */
     private Map<String, Object> mapearPagamento(PagamentoRequest p, BigDecimal vNF, boolean unicoPagamentoPix) {
         Map<String, Object> m = new LinkedHashMap<>();
         String forma = (p.getForma() != null) ? p.getForma().trim() : "";
@@ -486,7 +451,6 @@ public class FiscalService {
         if (isPix) {
             m.put("tPag", "17");
             m.put("vPag", unicoPagamentoPix && vNF != null ? vNF.setScale(2, RoundingMode.HALF_UP) : (p.getValor() != null ? p.getValor().setScale(2, RoundingMode.HALF_UP) : BigDecimal.ZERO));
-            // Estratégia 2 (teste): grupo card com tpIntegra=2 (não integrado) para PIX — alguns estados (ex.: CE) exigem <card> em pagamento eletrônico presencial
             Map<String, Object> cardPix = new LinkedHashMap<>();
             cardPix.put("tpIntegra", 2);
             m.put("card", cardPix);
@@ -540,10 +504,6 @@ public class FiscalService {
         );
     }
 
-    /**
-     * Destinatário NFC-e consumidor final: apenas nome e CPF ou CNPJ (sem endereço).
-     * SEFAZ aceita endereço genérico para consumidor final.
-     */
     private Map<String, Object> mapearDestNfceConsumidor(String nome, String cpf, String cnpj, UfMun ufMun) {
         Map<String, Object> d = new LinkedHashMap<>();
         String nomeValor = (nome != null && !nome.isBlank()) ? nome.trim() : "Consumidor final";
@@ -572,8 +532,6 @@ public class FiscalService {
 
     private Map<String, Object> mapearDest(DestinatarioRequest dest) {
         Map<String, Object> d = new LinkedHashMap<>();
-
-        // Schema Nuvem Fiscal exige CNPJ, CPF ou idEstrangeiro como PRIMEIRO elemento em dest
         String cnpj = dest.getCnpj() != null && !dest.getCnpj().isBlank() ? dest.getCnpj().replaceAll("\\D", "") : null;
         String cpf = dest.getCpf() != null && !dest.getCpf().isBlank() ? dest.getCpf().replaceAll("\\D", "") : null;
         if (cnpj != null && cnpj.length() == 14) {
@@ -634,10 +592,6 @@ public class FiscalService {
         return prefixo == ufCode;
     }
 
-    /**
-     * indIEDest: 1=Contribuinte ICMS, 2=Contribuinte isento (CNPJ), 9=Não contribuinte (pessoa física/consumidor).
-     * Pessoa física não tem IE; SEFAZ rejeita "isento" para destinatário PF. Usar 9 para CPF ou sem documento.
-     */
     private int obterIndIeDest(DestinatarioRequest dest) {
         String cnpj = limparCnpj(dest.getCnpj());
         String cpf = dest.getCpf() != null && !dest.getCpf().isBlank() ? dest.getCpf().replaceAll("\\D", "") : null;

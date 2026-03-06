@@ -1,5 +1,6 @@
 package com.fiscalimplify.fiscalimplify.controller;
 
+import com.fiscalimplify.fiscalimplify.documentation.DefaultApiResponses;
 import com.fiscalimplify.fiscalimplify.domain.entity.Company;
 import com.fiscalimplify.fiscalimplify.domain.repository.CompanyRepository;
 import com.fiscalimplify.fiscalimplify.dto.CertificadoRequest;
@@ -15,6 +16,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -22,12 +25,14 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Controller REST responsável por cadastro, listagem, atualização e configuração de empresas
- * na API Fiscalimplify e na Nuvem Fiscal (certificado, NF-e e NFC-e).
+ * Controller de empresas na API Fiscalimplify e Nuvem Fiscal.
  *
- * @author Fiscalimplify
- * @version 1.0
+ * @author VendaLume
+ * @version 1.0.0
+ * @since 2025-02-16
  */
+@Tag(name = "Empresas", description = "Cadastro de empresas e configuração fiscal (Nuvem Fiscal)")
+@DefaultApiResponses
 @RestController
 @RequestMapping("/companies")
 @RequiredArgsConstructor
@@ -37,6 +42,7 @@ public class CompanyController {
     private final CompanyRepository repository;
     private final NuvemFiscalService nuvemFiscalService;
 
+    @Operation(summary = "Criar empresa")
     @PostMapping
     @Transactional
     public ResponseEntity<Company> criar(@Valid @RequestBody CompanyRequest request) {
@@ -77,11 +83,13 @@ public class CompanyController {
         return ResponseEntity.status(HttpStatus.CREATED).body(saved);
     }
 
+    @Operation(summary = "Listar empresas")
     @GetMapping
     public ResponseEntity<List<Company>> listar() {
         return ResponseEntity.ok(repository.findAll());
     }
 
+    @Operation(summary = "Buscar empresa por ID")
     @GetMapping("/{id}")
     public ResponseEntity<Company> buscarPorId(@PathVariable UUID id) {
         return repository.findById(id)
@@ -89,6 +97,7 @@ public class CompanyController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    @Operation(summary = "Buscar empresa por CNPJ")
     @GetMapping("/cnpj/{cnpj}")
     public ResponseEntity<Company> buscarPorCnpj(@PathVariable String cnpj) {
         return repository.findByCnpj(cnpj.replaceAll("\\D", ""))
@@ -96,6 +105,7 @@ public class CompanyController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    @Operation(summary = "Atualizar empresa")
     @PatchMapping("/{cnpj}")
     @Transactional
     public ResponseEntity<Company> atualizar(
@@ -126,6 +136,7 @@ public class CompanyController {
         return ResponseEntity.ok(saved);
     }
 
+    @Operation(summary = "Cadastrar certificado digital A1 (PFX)")
     @PutMapping("/{cnpj}/certificado")
     public ResponseEntity<Map<String, Object>> cadastrarCertificado(
             @PathVariable String cnpj,
@@ -159,6 +170,7 @@ public class CompanyController {
         return ResponseEntity.ok(resultado);
     }
 
+    @Operation(summary = "Configurar NFC-e na empresa")
     @PutMapping("/{cnpj}/nfce/config")
     public ResponseEntity<Map<String, Object>> configurarNfce(
             @PathVariable String cnpj,
@@ -200,6 +212,7 @@ public class CompanyController {
         repository.save(company);
     }
 
+    @Operation(summary = "Configurar NF-e na empresa")
     @PutMapping("/{cnpj}/nfe/config")
     public ResponseEntity<Map<String, Object>> configurarNfe(
             @PathVariable String cnpj,
