@@ -227,4 +227,5 @@ public class CompanyController {
         log.info("NF-e configurada para empresa CNPJ {}", cnpjLimpo);
         return ResponseEntity.ok(resultado);
     }
+
 }
