@@ -89,6 +89,7 @@ public class CompanyController {
         return ResponseEntity.ok(repository.findAll());
     }
 
+
     @Operation(summary = "Buscar empresa por ID")
     @GetMapping("/{id}")
     public ResponseEntity<Company> buscarPorId(@PathVariable UUID id) {
