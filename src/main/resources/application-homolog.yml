@@ -12,7 +12,8 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: validate
+      # No Railway, queremos que o schema seja criado/atualizado automaticamente.
+      ddl-auto: update
     show-sql: false
     properties:
       hibernate:
