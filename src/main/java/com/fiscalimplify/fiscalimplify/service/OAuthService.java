@@ -34,6 +34,9 @@ public class OAuthService {
     @Value("${nuvemfiscal.client-secret}")
     private String clientSecret;
 
+    @Value("${nuvemfiscal.scopes:empresa nfe nfce distribuicao-nfe}")
+    private String scopes;
+
     private volatile String token;
     private volatile LocalDateTime expiresAt;
 
@@ -52,7 +55,7 @@ public class OAuthService {
         formData.add("grant_type", "client_credentials");
         formData.add("client_id", clientId);
         formData.add("client_secret", clientSecret);
-        formData.add("scope", "empresa nfe nfce");
+        formData.add("scope", scopes != null && !scopes.isBlank() ? scopes.trim() : "empresa nfe nfce");
 
         Map<?, ?> response = client.post()
                 .uri("/oauth/token")

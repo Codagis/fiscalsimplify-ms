@@ -8,6 +8,8 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.util.UriBuilder;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -33,6 +35,17 @@ public class NuvemFiscalService {
     private static final String AMBIENTE_HOMOLOGACAO = "homologacao";
     private static final int CRT_PADRAO = 3;
     private static final int ID_CSC_PADRAO = 0;
+
+    private static final String URI_LISTAR_NFE = "/nfe";
+    private static final String URI_LISTAR_NFCE = "/nfce";
+    private static final String URI_NFE_BY_ID = "/nfe/{id}";
+    private static final String URI_NFE_XML = "/nfe/{id}/xml";
+    private static final String URI_NFCE_BY_ID = "/nfce/{id}";
+    private static final String URI_NFCE_XML = "/nfce/{id}/xml";
+    private static final String URI_DIST_NFE_DOCUMENTOS = "/distribuicao/nfe/documentos";
+    private static final String URI_DIST_NFE_DOCUMENTO_BY_ID = "/distribuicao/nfe/documentos/{id}";
+    private static final String URI_DIST_NFE_DOCUMENTO_PDF = "/distribuicao/nfe/documentos/{id}/pdf";
+    private static final String URI_DIST_NFE_DOCUMENTO_XML = "/distribuicao/nfe/documentos/{id}/xml";
 
     @Qualifier("nuvemFiscalClient")
     private final WebClient webClient;
@@ -90,6 +103,208 @@ public class NuvemFiscalService {
                 () -> webClient.put().uri(URI_NFE, cnpjLimpo).bodyValue(body),
                 () -> log.info("NF-e configurada com sucesso: CNPJ {}", cnpjLimpo)
         );
+    }
+
+    /**
+     * Lista NF-e emitidas pela empresa (emitente).
+     * Mapeia diretamente o endpoint GET /nfe da Nuvem Fiscal.
+     */
+    public Map<String, Object> listarNfeEmitidas(
+            String cnpjEmitente,
+            String ambiente,
+            Integer top,
+            Integer skip,
+            Boolean inlinecount,
+            String referencia,
+            String chave,
+            String serie
+    ) {
+        String cnpjLimpo = limparCnpj(cnpjEmitente);
+        String amb = (ambiente != null && ambiente.equalsIgnoreCase("producao")) ? "producao" : AMBIENTE_HOMOLOGACAO;
+        return executarRequest(
+                () -> webClient.get().uri(uriBuilder -> montarListagemBase(uriBuilder, URI_LISTAR_NFE, top, skip, inlinecount)
+                        .queryParam("cpf_cnpj", cnpjLimpo)
+                        .queryParam("ambiente", amb)
+                        .queryParamIfPresent("referencia", Optional.ofNullable(referencia).filter(s -> !s.isBlank()))
+                        .queryParamIfPresent("chave", Optional.ofNullable(chave).filter(s -> !s.isBlank()))
+                        .queryParamIfPresent("serie", Optional.ofNullable(serie).filter(s -> !s.isBlank()))
+                        .build()),
+                () -> log.debug("NF-e listadas (emitidas) para CNPJ {}", cnpjLimpo)
+        );
+    }
+
+    /**
+     * Lista NFC-e emitidas pela empresa (emitente).
+     * Mapeia diretamente o endpoint GET /nfce da Nuvem Fiscal.
+     */
+    public Map<String, Object> listarNfceEmitidas(
+            String cnpjEmitente,
+            String ambiente,
+            Integer top,
+            Integer skip,
+            Boolean inlinecount,
+            String referencia,
+            String chave,
+            String serie
+    ) {
+        String cnpjLimpo = limparCnpj(cnpjEmitente);
+        String amb = (ambiente != null && ambiente.equalsIgnoreCase("producao")) ? "producao" : AMBIENTE_HOMOLOGACAO;
+        return executarRequest(
+                () -> webClient.get().uri(uriBuilder -> montarListagemBase(uriBuilder, URI_LISTAR_NFCE, top, skip, inlinecount)
+                        .queryParam("cpf_cnpj", cnpjLimpo)
+                        .queryParam("ambiente", amb)
+                        .queryParamIfPresent("referencia", Optional.ofNullable(referencia).filter(s -> !s.isBlank()))
+                        .queryParamIfPresent("chave", Optional.ofNullable(chave).filter(s -> !s.isBlank()))
+                        .queryParamIfPresent("serie", Optional.ofNullable(serie).filter(s -> !s.isBlank()))
+                        .build()),
+                () -> log.debug("NFC-e listadas (emitidas) para CNPJ {}", cnpjLimpo)
+        );
+    }
+
+    public Map<String, Object> buscarNfePorId(String id) {
+        if (id == null || id.isBlank()) return Map.of();
+        return executarRequest(
+                () -> webClient.get().uri(URI_NFE_BY_ID, id),
+                () -> log.debug("NF-e detalhada: {}", id)
+        );
+    }
+
+    public byte[] baixarXmlNfe(String id) {
+        if (id == null || id.isBlank()) return new byte[0];
+        return webClient.get()
+                .uri(URI_NFE_XML, id)
+                .accept(org.springframework.http.MediaType.APPLICATION_XML)
+                .retrieve()
+                .onStatus(
+                        status -> status.is4xxClientError() || status.is5xxServerError(),
+                        resp -> resp.bodyToMono(String.class)
+                                .map(body -> new RuntimeException("Nuvem Fiscal: " + resp.statusCode() + " - " + body))
+                )
+                .bodyToMono(byte[].class)
+                .blockOptional()
+                .orElse(new byte[0]);
+    }
+
+    public Map<String, Object> buscarNfcePorId(String id) {
+        if (id == null || id.isBlank()) return Map.of();
+        return executarRequest(
+                () -> webClient.get().uri(URI_NFCE_BY_ID, id),
+                () -> log.debug("NFC-e detalhada: {}", id)
+        );
+    }
+
+    public byte[] baixarXmlNfce(String id) {
+        if (id == null || id.isBlank()) return new byte[0];
+        return webClient.get()
+                .uri(URI_NFCE_XML, id)
+                .accept(org.springframework.http.MediaType.APPLICATION_XML)
+                .retrieve()
+                .onStatus(
+                        status -> status.is4xxClientError() || status.is5xxServerError(),
+                        resp -> resp.bodyToMono(String.class)
+                                .map(body -> new RuntimeException("Nuvem Fiscal: " + resp.statusCode() + " - " + body))
+                )
+                .bodyToMono(byte[].class)
+                .blockOptional()
+                .orElse(new byte[0]);
+    }
+
+    /**
+     * Lista documentos NF-e distribuídos para a empresa interessada (tipicamente notas recebidas).
+     * Isso atende o cenário de "notas a pagar" (empresa como destinatária/interessada).
+     */
+    public Map<String, Object> listarNfeRecebidasDistribuicao(
+            String cnpjInteressado,
+            String ambiente,
+            Integer top,
+            Integer skip,
+            Boolean inlinecount,
+            Integer distNsu,
+            String formaDistribuicao,
+            String chaveAcesso
+    ) {
+        String cnpjLimpo = limparCnpj(cnpjInteressado);
+        String amb = (ambiente != null && ambiente.equalsIgnoreCase("producao")) ? "producao" : AMBIENTE_HOMOLOGACAO;
+        log.info("NuvemFiscal: GET {} cpf_cnpj={} ambiente={} top={} skip={}",
+                URI_DIST_NFE_DOCUMENTOS, cnpjLimpo, amb, top, skip);
+        try {
+            return executarRequest(
+                    () -> webClient.get().uri(uriBuilder -> montarListagemBase(uriBuilder, URI_DIST_NFE_DOCUMENTOS, top, skip, inlinecount)
+                            .queryParam("cpf_cnpj", cnpjLimpo)
+                            .queryParam("ambiente", amb)
+                            .queryParamIfPresent("dist_nsu", Optional.ofNullable(distNsu))
+                            .queryParam("tipo_documento", "nota")
+                            .queryParamIfPresent("forma_distribuicao", Optional.ofNullable(formaDistribuicao).filter(s -> !s.isBlank()))
+                            .queryParamIfPresent("chave_acesso", Optional.ofNullable(chaveAcesso).filter(s -> !s.isBlank()))
+                            .build()),
+                    () -> log.debug("Distribuição NF-e listada para CNPJ {}", cnpjLimpo)
+            );
+        } catch (RuntimeException e) {
+            // Degrada com elegância quando o client não tem scope distnfe habilitado
+            Throwable cause = e.getCause();
+            String msg = e.getMessage() != null ? e.getMessage() : "";
+            if ((cause instanceof WebClientResponseException.Forbidden) || msg.contains("403 FORBIDDEN")) {
+                if (msg.contains("distnfe") || msg.contains("distribuicao-nfe")
+                        || (cause != null && cause.getMessage() != null
+                        && (cause.getMessage().contains("distnfe") || cause.getMessage().contains("distribuicao-nfe")))) {
+                    log.warn("Nuvem Fiscal: client sem scope de distribuição NF-e. Retornando lista vazia para distribuição NF-e.");
+                    Map<String, Object> out = new LinkedHashMap<>();
+                    out.put("data", java.util.List.of());
+                    out.put("warning", "Client OAuth não possui o scope de distribuição NF-e habilitado na Nuvem Fiscal (ex.: 'distribuicao-nfe'). Habilite o escopo para consultar notas recebidas.");
+                    if (Boolean.TRUE.equals(inlinecount)) out.put("@count", 0);
+                    return out;
+                }
+            }
+            throw e;
+        }
+    }
+
+    public Map<String, Object> buscarDocumentoDistribuicaoNfe(String id) {
+        if (id == null || id.isBlank()) return Map.of();
+        return executarRequest(
+                () -> webClient.get().uri(URI_DIST_NFE_DOCUMENTO_BY_ID, id),
+                () -> log.debug("Documento distribuição NF-e detalhado: {}", id)
+        );
+    }
+
+    public byte[] baixarPdfDocumentoDistribuicaoNfe(String id) {
+        if (id == null || id.isBlank()) return new byte[0];
+        return webClient.get()
+                .uri(URI_DIST_NFE_DOCUMENTO_PDF, id)
+                .accept(org.springframework.http.MediaType.APPLICATION_PDF)
+                .retrieve()
+                .onStatus(
+                        status -> status.is4xxClientError() || status.is5xxServerError(),
+                        resp -> resp.bodyToMono(String.class)
+                                .map(body -> new RuntimeException("Nuvem Fiscal: " + resp.statusCode() + " - " + body))
+                )
+                .bodyToMono(byte[].class)
+                .blockOptional()
+                .orElse(new byte[0]);
+    }
+
+    public byte[] baixarXmlDocumentoDistribuicaoNfe(String id) {
+        if (id == null || id.isBlank()) return new byte[0];
+        return webClient.get()
+                .uri(URI_DIST_NFE_DOCUMENTO_XML, id)
+                .accept(org.springframework.http.MediaType.APPLICATION_XML)
+                .retrieve()
+                .onStatus(
+                        status -> status.is4xxClientError() || status.is5xxServerError(),
+                        resp -> resp.bodyToMono(String.class)
+                                .map(body -> new RuntimeException("Nuvem Fiscal: " + resp.statusCode() + " - " + body))
+                )
+                .bodyToMono(byte[].class)
+                .blockOptional()
+                .orElse(new byte[0]);
+    }
+
+    private UriBuilder montarListagemBase(UriBuilder uriBuilder, String path, Integer top, Integer skip, Boolean inlinecount) {
+        UriBuilder b = uriBuilder.path(path);
+        if (top != null) b.queryParam("$top", top);
+        if (skip != null) b.queryParam("$skip", skip);
+        if (inlinecount != null) b.queryParam("$inlinecount", inlinecount);
+        return b;
     }
 
     private Map<String, Object> montarBodyEmpresa(String cnpj, String razaoSocial, String nomeFantasia, String inscricaoEstadual,
