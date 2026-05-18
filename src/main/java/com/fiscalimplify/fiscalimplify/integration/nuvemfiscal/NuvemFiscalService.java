@@ -42,6 +42,7 @@ public class NuvemFiscalService {
     private static final String URI_NFE_XML = "/nfe/{id}/xml";
     private static final String URI_NFCE_BY_ID = "/nfce/{id}";
     private static final String URI_NFCE_XML = "/nfce/{id}/xml";
+    private static final String URI_DIST_NFE_SOLICITAR = "/distribuicao/nfe";
     private static final String URI_DIST_NFE_DOCUMENTOS = "/distribuicao/nfe/documentos";
     private static final String URI_DIST_NFE_DOCUMENTO_BY_ID = "/distribuicao/nfe/documentos/{id}";
     private static final String URI_DIST_NFE_DOCUMENTO_PDF = "/distribuicao/nfe/documentos/{id}/pdf";
@@ -207,6 +208,36 @@ public class NuvemFiscalService {
                 .bodyToMono(byte[].class)
                 .blockOptional()
                 .orElse(new byte[0]);
+    }
+
+    /**
+     * Solicita à SEFAZ novos documentos de distribuição NF-e (DF-e) para o CNPJ interessado (destinatário).
+     */
+    public Map<String, Object> solicitarDistribuicaoNfe(
+            String cnpjInteressado,
+            String ambiente,
+            String ufAutor,
+            Integer distNsu
+    ) {
+        String cnpjLimpo = limparCnpj(cnpjInteressado);
+        String amb = (ambiente != null && ambiente.equalsIgnoreCase("producao")) ? "producao" : AMBIENTE_HOMOLOGACAO;
+        String uf = (ufAutor != null && !ufAutor.isBlank()) ? ufAutor.trim().toUpperCase() : "SP";
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("cpf_cnpj", cnpjLimpo);
+        body.put("ambiente", amb);
+        body.put("uf_autor", uf);
+        body.put("tipo_consulta", "dist-nsu");
+        body.put("ignorar_tempo_espera", true);
+        if (distNsu != null) {
+            body.put("dist_nsu", distNsu);
+        }
+
+        log.info("NuvemFiscal: POST {} cpf_cnpj={} ambiente={} uf_autor={}", URI_DIST_NFE_SOLICITAR, cnpjLimpo, amb, uf);
+        return executarRequest(
+                () -> webClient.post().uri(URI_DIST_NFE_SOLICITAR).bodyValue(body),
+                () -> log.debug("Distribuição NF-e solicitada para CNPJ {}", cnpjLimpo)
+        );
     }
 
     /**

@@ -49,4 +49,7 @@ public class DestinatarioRequest {
 
     @Pattern(regexp = "(\\d{8})?", message = "CEP deve conter 8 dígitos quando informado")
     private String cep;
+
+    /** 1=contribuinte ICMS, 2=isento, 9=não contribuinte. Se null, inferido pelo documento. */
+    private Integer indIEDest;
 }

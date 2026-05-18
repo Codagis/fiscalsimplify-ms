@@ -71,6 +71,18 @@ public class NfeController {
         return ResponseEntity.ok(nuvemFiscalService.buscarNfePorId(id));
     }
 
+    @Operation(summary = "Solicitar distribuição NF-e na SEFAZ (buscar notas em que a empresa é destinatária)")
+    @PostMapping("/received/sync")
+    public ResponseEntity<Map<String, Object>> sincronizarRecebidas(
+            @RequestParam String cnpj,
+            @RequestParam String ambiente,
+            @RequestParam String ufAutor,
+            @RequestParam(required = false, name = "dist_nsu") Integer distNsu
+    ) {
+        String cnpjLimpo = cnpj != null ? cnpj.replaceAll("\\D", "") : "";
+        return ResponseEntity.ok(nuvemFiscalService.solicitarDistribuicaoNfe(cnpjLimpo, ambiente, ufAutor, distNsu));
+    }
+
     @Operation(summary = "Listar NF-e recebidas via distribuição (a pagar/destinatária)")
     @GetMapping("/received")
     public ResponseEntity<Map<String, Object>> listarRecebidas(

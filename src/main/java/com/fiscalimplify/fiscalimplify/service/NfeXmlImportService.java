@@ -67,6 +67,13 @@ public class NfeXmlImportService {
             if (cnpjDest != null) destinatario.setCnpj(cleanDigits(cnpjDest));
             if (cpfDest != null) destinatario.setCpf(cleanDigits(cpfDest));
             destinatario.setIe(textOrNull(childOrNull(dest, "IE")));
+            Element indIEDestEl = childOrNull(dest, "indIEDest");
+            if (indIEDestEl != null) {
+                String indRaw = textOrNull(indIEDestEl);
+                if (indRaw != null && indRaw.matches("\\d")) {
+                    destinatario.setIndIEDest(Integer.parseInt(indRaw));
+                }
+            }
 
             if ((destinatario.getCnpj() == null || destinatario.getCnpj().isBlank())
                     && (destinatario.getCpf() == null || destinatario.getCpf().isBlank())) {

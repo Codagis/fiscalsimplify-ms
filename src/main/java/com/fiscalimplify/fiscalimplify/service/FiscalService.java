@@ -593,18 +593,20 @@ public class FiscalService {
     }
 
     private int obterIndIeDest(DestinatarioRequest dest) {
+        if (dest.getIndIEDest() != null && dest.getIndIEDest() >= 1 && dest.getIndIEDest() <= 9) {
+            return dest.getIndIEDest();
+        }
         String cnpj = limparCnpj(dest.getCnpj());
         String cpf = dest.getCpf() != null && !dest.getCpf().isBlank() ? dest.getCpf().replaceAll("\\D", "") : null;
         if (cpf != null && cpf.length() == 11) return 9;
         if (cnpj.isEmpty()) return 9;
-        if (CNPJ_TESTE_HOMOLOG.equals(cnpj)) return 2;
+        // CNPJ padrão de homologação: não contribuinte (evita rejeição 805 em CE e outros estados)
+        if (CNPJ_TESTE_HOMOLOG.equals(cnpj)) return 9;
         if (dest.getIe() != null && !dest.getIe().isBlank()) return 1;
-        return 2;
+        return 9;
     }
 
     private String obterIeDestinatario(DestinatarioRequest dest, int indIEDest) {
-        String cnpj = limparCnpj(dest.getCnpj());
-        if (CNPJ_TESTE_HOMOLOG.equals(cnpj)) return IE_ISENTO;
         if (indIEDest == 9) return null;
         if (indIEDest == 2) return valorOuPadrao(dest.getIe(), IE_ISENTO);
         return dest.getIe();
