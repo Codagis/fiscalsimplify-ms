@@ -43,4 +43,7 @@ public class ItemRequest {
     @NotNull(message = "Valor unitário é obrigatório")
     @DecimalMin(value = "0", message = "Valor unitário não pode ser negativo")
     private BigDecimal valorUnitario;
+
+    /** Alíquota aproximada de tributos (%) para vTotTrib no item (Lei 12.741). */
+    private BigDecimal aliquotaTributos;
 }

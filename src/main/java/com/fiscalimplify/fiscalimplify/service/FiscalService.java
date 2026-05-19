@@ -206,7 +206,7 @@ public class FiscalService {
         });
 
         infNFe.put("det", mapearDetComDesconto(request.getItens(), crt, vProd, vDesc));
-        infNFe.put("total", Map.of("ICMSTot", montarIcmstot(vProd, vDesc, vNF)));
+        infNFe.put("total", Map.of("ICMSTot", montarIcmstot(vProd, vDesc, vNF, somarVTotTrib(request.getItens()))));
         infNFe.put("transp", Map.of("modFrete", MOD_FRETE_SEM_FRETE));
         Map<String, Object> pag = new LinkedHashMap<>();
         List<Map<String, Object>> detPagList = mapearDetPag(request.getPagamentos(), vNF);
@@ -233,7 +233,7 @@ public class FiscalService {
         infNFe.put("emit", montarEmit(request.getCnpjEmitente(), obterIeEmitente(request.getCnpjEmitente(), request.getIeEmitente())));
         infNFe.put("dest", mapearDest(request.getDestinatario()));
         infNFe.put("det", mapearDet(request.getItens(), crt));
-        infNFe.put("total", Map.of("ICMSTot", montarIcmstot(vProd, BigDecimal.ZERO, vProd)));
+        infNFe.put("total", Map.of("ICMSTot", montarIcmstot(vProd, BigDecimal.ZERO, vProd, somarVTotTrib(request.getItens()))));
         infNFe.put("transp", Map.of("modFrete", MOD_FRETE_SEM_FRETE));
         infNFe.put("pag", Map.of("detPag", List.of(Map.of("tPag", "90", "vPag", BigDecimal.ZERO))));
 
@@ -403,7 +403,37 @@ public class FiscalService {
         prod.put("vUnTrib", item.getValorUnitario());
         prod.put("indTot", 1);
 
+        BigDecimal vTotTribItem = calcularVTotTribItem(item, vDescItem);
+        if (vTotTribItem.compareTo(BigDecimal.ZERO) > 0) {
+            prod.put("vTotTrib", vTotTribItem);
+        }
+
         return prod;
+    }
+
+    private BigDecimal calcularVTotTribItem(ItemRequest item, BigDecimal vDescItem) {
+        if (item.getAliquotaTributos() == null || item.getAliquotaTributos().compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal vProd = item.getValorUnitario().multiply(item.getQuantidade());
+        if (vDescItem != null && vDescItem.compareTo(BigDecimal.ZERO) > 0) {
+            vProd = vProd.subtract(vDescItem);
+        }
+        if (vProd.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO;
+        }
+        return vProd.multiply(item.getAliquotaTributos())
+                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal somarVTotTrib(List<ItemRequest> itens) {
+        if (itens == null || itens.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        return itens.stream()
+                .map(i -> calcularVTotTribItem(i, null))
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP);
     }
 
     private Map<String, Object> montarImposto(boolean simplesNacional) {
@@ -480,28 +510,31 @@ public class FiscalService {
         return m;
     }
 
-    private Map<String, Object> montarIcmstot(BigDecimal vProd, BigDecimal vDesc, BigDecimal vNF) {
-        return Map.ofEntries(
-                Map.entry("vBC", 0),
-                Map.entry("vICMS", 0),
-                Map.entry("vICMSDeson", 0),
-                Map.entry("vFCP", 0),
-                Map.entry("vBCST", 0),
-                Map.entry("vST", 0),
-                Map.entry("vFCPST", 0),
-                Map.entry("vFCPSTRet", 0),
-                Map.entry("vProd", vProd),
-                Map.entry("vFrete", 0),
-                Map.entry("vSeg", 0),
-                Map.entry("vDesc", vDesc != null ? vDesc : BigDecimal.ZERO),
-                Map.entry("vII", 0),
-                Map.entry("vIPI", 0),
-                Map.entry("vIPIDevol", 0),
-                Map.entry("vPIS", 0),
-                Map.entry("vCOFINS", 0),
-                Map.entry("vOutro", 0),
-                Map.entry("vNF", vNF)
-        );
+    private Map<String, Object> montarIcmstot(BigDecimal vProd, BigDecimal vDesc, BigDecimal vNF, BigDecimal vTotTrib) {
+        Map<String, Object> tot = new LinkedHashMap<>();
+        tot.put("vBC", 0);
+        tot.put("vICMS", 0);
+        tot.put("vICMSDeson", 0);
+        tot.put("vFCP", 0);
+        tot.put("vBCST", 0);
+        tot.put("vST", 0);
+        tot.put("vFCPST", 0);
+        tot.put("vFCPSTRet", 0);
+        tot.put("vProd", vProd);
+        tot.put("vFrete", 0);
+        tot.put("vSeg", 0);
+        tot.put("vDesc", vDesc != null ? vDesc : BigDecimal.ZERO);
+        tot.put("vII", 0);
+        tot.put("vIPI", 0);
+        tot.put("vIPIDevol", 0);
+        tot.put("vPIS", 0);
+        tot.put("vCOFINS", 0);
+        tot.put("vOutro", 0);
+        tot.put("vNF", vNF);
+        if (vTotTrib != null && vTotTrib.compareTo(BigDecimal.ZERO) > 0) {
+            tot.put("vTotTrib", vTotTrib.setScale(2, RoundingMode.HALF_UP));
+        }
+        return tot;
     }
 
     private Map<String, Object> mapearDestNfceConsumidor(String nome, String cpf, String cnpj, UfMun ufMun) {
