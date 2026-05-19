@@ -6,6 +6,7 @@ import com.fiscalimplify.fiscalimplify.domain.repository.CompanyRepository;
 import com.fiscalimplify.fiscalimplify.dto.CertificadoRequest;
 import com.fiscalimplify.fiscalimplify.dto.CompanyRequest;
 import com.fiscalimplify.fiscalimplify.dto.CompanyUpdateRequest;
+import com.fiscalimplify.fiscalimplify.dto.DistNfeConfigRequest;
 import com.fiscalimplify.fiscalimplify.dto.NfcConfigRequest;
 import com.fiscalimplify.fiscalimplify.dto.NfeConfigRequest;
 import com.fiscalimplify.fiscalimplify.exception.RegraNegocioException;
@@ -226,6 +227,32 @@ public class CompanyController {
         Map<String, Object> resultado = nuvemFiscalService.configurarNfe(cnpjLimpo, request);
 
         log.info("NF-e configurada para empresa CNPJ {}", cnpjLimpo);
+        return ResponseEntity.ok(resultado);
+    }
+
+    @Operation(summary = "Configurar Distribuição NF-e (notas recebidas / DF-e)")
+    @PutMapping("/{cnpj}/distnfe/config")
+    public ResponseEntity<Map<String, Object>> configurarDistNfe(
+            @PathVariable String cnpj,
+            @Valid @RequestBody DistNfeConfigRequest request) {
+        String cnpjLimpo = cnpj.replaceAll("\\D", "");
+        Company company = repository.findByCnpj(cnpjLimpo)
+                .orElseThrow(() -> new RegraNegocioException("Empresa não encontrada com CNPJ: " + cnpj));
+
+        Map<String, Object> resultado;
+        try {
+            resultado = nuvemFiscalService.configurarDistNfe(cnpjLimpo, request);
+        } catch (RuntimeException e) {
+            if (e.getMessage() != null && (e.getMessage().contains("404") || e.getMessage().contains("EmpresaNotFound"))) {
+                log.info("Empresa CNPJ {} não está na Nuvem Fiscal (404). Cadastrando e tentando novamente...", cnpjLimpo);
+                garantirEmpresaNaNuvemFiscal(company);
+                resultado = nuvemFiscalService.configurarDistNfe(cnpjLimpo, request);
+            } else {
+                throw e;
+            }
+        }
+
+        log.info("Distribuição NF-e configurada para empresa CNPJ {}", cnpjLimpo);
         return ResponseEntity.ok(resultado);
     }
 

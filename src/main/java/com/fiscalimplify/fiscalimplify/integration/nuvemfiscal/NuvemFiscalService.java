@@ -1,5 +1,6 @@
 package com.fiscalimplify.fiscalimplify.integration.nuvemfiscal;
 
+import com.fiscalimplify.fiscalimplify.dto.DistNfeConfigRequest;
 import com.fiscalimplify.fiscalimplify.dto.NfcConfigRequest;
 import com.fiscalimplify.fiscalimplify.dto.NfeConfigRequest;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +33,7 @@ public class NuvemFiscalService {
     private static final String URI_CERTIFICADO = "/empresas/{cpf_cnpj}/certificado";
     private static final String URI_NFCE = "/empresas/{cpf_cnpj}/nfce";
     private static final String URI_NFE = "/empresas/{cpf_cnpj}/nfe";
+    private static final String URI_DIST_NFE_CONFIG = "/empresas/{cpf_cnpj}/distnfe";
     private static final String AMBIENTE_HOMOLOGACAO = "homologacao";
     private static final int CRT_PADRAO = 3;
     private static final int ID_CSC_PADRAO = 0;
@@ -104,6 +106,28 @@ public class NuvemFiscalService {
                 () -> webClient.put().uri(URI_NFE, cnpjLimpo).bodyValue(body),
                 () -> log.info("NF-e configurada com sucesso: CNPJ {}", cnpjLimpo)
         );
+    }
+
+    /**
+     * Configura Distribuição NF-e (DF-e) na Nuvem Fiscal — obrigatório antes de buscar notas recebidas na SEFAZ.
+     */
+    public Map<String, Object> configurarDistNfe(String cnpj, DistNfeConfigRequest request) {
+        log.info("Configurando Distribuição NF-e na Nuvem Fiscal: CNPJ {}", cnpj);
+
+        Map<String, Object> body = montarBodyConfigDistNfe(request);
+        String cnpjLimpo = limparCnpj(cnpj);
+
+        return executarRequest(
+                () -> webClient.put().uri(URI_DIST_NFE_CONFIG, cnpjLimpo).bodyValue(body),
+                () -> log.info("Distribuição NF-e configurada com sucesso: CNPJ {}", cnpjLimpo)
+        );
+    }
+
+    public void garantirConfigDistribuicaoNfe(String cnpj, String ambiente) {
+        String amb = (ambiente != null && ambiente.equalsIgnoreCase("producao")) ? "producao" : AMBIENTE_HOMOLOGACAO;
+        DistNfeConfigRequest request = new DistNfeConfigRequest();
+        request.setAmbiente(amb);
+        configurarDistNfe(cnpj, request);
     }
 
     /**
@@ -228,16 +252,28 @@ public class NuvemFiscalService {
         body.put("ambiente", amb);
         body.put("uf_autor", uf);
         body.put("tipo_consulta", "dist-nsu");
-        body.put("ignorar_tempo_espera", true);
-        if (distNsu != null) {
-            body.put("dist_nsu", distNsu);
-        }
+        // false = respeita intervalo mínimo de 1h quando não há novos documentos (evita "Consumo Indevido")
+        body.put("ignorar_tempo_espera", false);
+        // Obrigatório para dist-nsu: 0 = primeira consulta / desde o início
+        body.put("dist_nsu", distNsu != null ? distNsu : 0);
 
         log.info("NuvemFiscal: POST {} cpf_cnpj={} ambiente={} uf_autor={}", URI_DIST_NFE_SOLICITAR, cnpjLimpo, amb, uf);
-        return executarRequest(
-                () -> webClient.post().uri(URI_DIST_NFE_SOLICITAR).bodyValue(body),
-                () -> log.debug("Distribuição NF-e solicitada para CNPJ {}", cnpjLimpo)
-        );
+        try {
+            return executarRequest(
+                    () -> webClient.post().uri(URI_DIST_NFE_SOLICITAR).bodyValue(body),
+                    () -> log.debug("Distribuição NF-e solicitada para CNPJ {}", cnpjLimpo)
+            );
+        } catch (RuntimeException e) {
+            if (isConfigDistNfeNotFound(e)) {
+                log.info("Configuração de Distribuição NF-e ausente para CNPJ {}. Configurando e tentando novamente...", cnpjLimpo);
+                garantirConfigDistribuicaoNfe(cnpjLimpo, amb);
+                return executarRequest(
+                        () -> webClient.post().uri(URI_DIST_NFE_SOLICITAR).bodyValue(body),
+                        () -> log.debug("Distribuição NF-e solicitada para CNPJ {} (após configurar distnfe)", cnpjLimpo)
+                );
+            }
+            throw e;
+        }
     }
 
     /**
@@ -271,6 +307,21 @@ public class NuvemFiscalService {
                     () -> log.debug("Distribuição NF-e listada para CNPJ {}", cnpjLimpo)
             );
         } catch (RuntimeException e) {
+            if (isConfigDistNfeNotFound(e)) {
+                log.info("Configuração de Distribuição NF-e ausente para CNPJ {}. Configurando e tentando listar novamente...", cnpjLimpo);
+                garantirConfigDistribuicaoNfe(cnpjLimpo, amb);
+                return executarRequest(
+                        () -> webClient.get().uri(uriBuilder -> montarListagemBase(uriBuilder, URI_DIST_NFE_DOCUMENTOS, top, skip, inlinecount)
+                                .queryParam("cpf_cnpj", cnpjLimpo)
+                                .queryParam("ambiente", amb)
+                                .queryParamIfPresent("dist_nsu", Optional.ofNullable(distNsu))
+                                .queryParam("tipo_documento", "nota")
+                                .queryParamIfPresent("forma_distribuicao", Optional.ofNullable(formaDistribuicao).filter(s -> !s.isBlank()))
+                                .queryParamIfPresent("chave_acesso", Optional.ofNullable(chaveAcesso).filter(s -> !s.isBlank()))
+                                .build()),
+                        () -> log.debug("Distribuição NF-e listada para CNPJ {} (após configurar distnfe)", cnpjLimpo)
+                );
+            }
             // Degrada com elegância quando o client não tem scope distnfe habilitado
             Throwable cause = e.getCause();
             String msg = e.getMessage() != null ? e.getMessage() : "";
@@ -389,6 +440,20 @@ public class NuvemFiscalService {
                 "CRT", valorOuPadrao(request.getCrt(), CRT_PADRAO),
                 "ambiente", valorOuPadrao(request.getAmbiente(), AMBIENTE_HOMOLOGACAO)
         );
+    }
+
+    private Map<String, Object> montarBodyConfigDistNfe(DistNfeConfigRequest request) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("ambiente", valorOuPadrao(request.getAmbiente(), AMBIENTE_HOMOLOGACAO));
+        body.put("distribuicao_automatica", Boolean.TRUE.equals(request.getDistribuicaoAutomatica()));
+        body.put("distribuicao_intervalo_horas", valorOuPadrao(request.getDistribuicaoIntervaloHoras(), 24));
+        body.put("ciencia_automatica", Boolean.TRUE.equals(request.getCienciaAutomatica()));
+        return body;
+    }
+
+    private boolean isConfigDistNfeNotFound(RuntimeException e) {
+        String msg = e.getMessage();
+        return msg != null && msg.contains("ConfigDistNfeNotFound");
     }
 
     private String nomeFantasiaOuRazaoSocial(String nomeFantasia, String razaoSocial) {
