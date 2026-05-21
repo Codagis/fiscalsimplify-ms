@@ -14,10 +14,9 @@ WORKDIR /app
 COPY --from=build /app/target/*.jar app.jar
 
 ENV SPRING_PROFILES_ACTIVE=homolog,railway
-
-COPY railway-jvm.opts /app/railway-jvm.opts
+ENV JAVA_TOOL_OPTIONS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=55.0 -XX:InitialRAMPercentage=25.0 -XX:+UseG1GC -XX:MaxMetaspaceSize=192m -XX:ParallelGCThreads=2 -Xss512k"
 
 EXPOSE 8081
 
-CMD ["java", "@/app/railway-jvm.opts", "-jar", "app.jar"]
+CMD ["java", "-jar", "app.jar"]
 

@@ -1,8 +1,8 @@
 spring:
   datasource:
-    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_DATABASE:fiscaldb}
-    username: ${DB_USERNAME:postgres}
-    password: ${DB_PASSWORD:postgres}
+    url: jdbc:postgresql://${PGHOST:${DB_HOST:localhost}}}:${PGPORT:${DB_PORT:5432}}}/${PGDATABASE:${DB_DATABASE:fiscaldb}}
+    username: ${PGUSER:${DB_USERNAME:postgres}}
+    password: ${PGPASSWORD:${DB_PASSWORD:postgres}}
     hikari:
       maximum-pool-size: 8
       minimum-idle: 2
