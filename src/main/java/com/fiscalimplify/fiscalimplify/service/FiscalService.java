@@ -206,7 +206,7 @@ public class FiscalService {
         });
 
         infNFe.put("det", mapearDetComDesconto(request.getItens(), crt, vProd, vDesc));
-        infNFe.put("total", Map.of("ICMSTot", montarIcmstot(vProd, vDesc, vNF, somarVTotTrib(request.getItens()))));
+        infNFe.put("total", Map.of("ICMSTot", montarIcmstot(vProd, vDesc, vNF, somarVTotTribItens(request.getItens(), vProd, vDesc))));
         infNFe.put("transp", Map.of("modFrete", MOD_FRETE_SEM_FRETE));
         Map<String, Object> pag = new LinkedHashMap<>();
         List<Map<String, Object>> detPagList = mapearDetPag(request.getPagamentos(), vNF);
@@ -402,12 +402,7 @@ public class FiscalService {
         prod.put("qTrib", item.getQuantidade());
         prod.put("vUnTrib", item.getValorUnitario());
         prod.put("indTot", 1);
-
-        BigDecimal vTotTribItem = calcularVTotTribItem(item, vDescItem);
-        if (vTotTribItem.compareTo(BigDecimal.ZERO) > 0) {
-            prod.put("vTotTrib", vTotTribItem);
-        }
-
+        // vTotTrib apenas no total (ICMSTot) — API Nuvem Fiscal nao aceita no TProd do item
         return prod;
     }
 
@@ -427,13 +422,23 @@ public class FiscalService {
     }
 
     private BigDecimal somarVTotTrib(List<ItemRequest> itens) {
+        return somarVTotTribItens(itens, null, null);
+    }
+
+    /** Soma tributos aproximados (Lei 12.741) para ICMSTot.vTotTrib — nao enviar por item no JSON Nuvem Fiscal. */
+    private BigDecimal somarVTotTribItens(List<ItemRequest> itens, BigDecimal vProdTotal, BigDecimal vDescTotal) {
         if (itens == null || itens.isEmpty()) {
             return BigDecimal.ZERO;
         }
-        return itens.stream()
-                .map(i -> calcularVTotTribItem(i, null))
-                .reduce(BigDecimal.ZERO, BigDecimal::add)
-                .setScale(2, RoundingMode.HALF_UP);
+        List<BigDecimal> vDescPorItem = distribuirDescontoPorItens(itens, vProdTotal, vDescTotal);
+        BigDecimal total = BigDecimal.ZERO;
+        for (int i = 0; i < itens.size(); i++) {
+            BigDecimal itemVDesc = (vDescPorItem != null && i < vDescPorItem.size())
+                    ? vDescPorItem.get(i)
+                    : BigDecimal.ZERO;
+            total = total.add(calcularVTotTribItem(itens.get(i), itemVDesc));
+        }
+        return total.setScale(2, RoundingMode.HALF_UP);
     }
 
     private Map<String, Object> montarImposto(boolean simplesNacional) {

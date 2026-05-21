@@ -95,6 +95,17 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErroResponse> handleGenerica(Exception ex, WebRequest request) {
+        String msg = ex.getMessage() != null ? ex.getMessage() : "";
+        if (msg.startsWith("Nuvem Fiscal: 400")) {
+            log.warn("{} -> 400 Nuvem Fiscal: {}", requestLine(request), msg);
+            ErroResponse response = new ErroResponse(
+                    Instant.now(),
+                    HttpStatus.BAD_REQUEST.value(),
+                    "Rejeicao Nuvem Fiscal (dados da nota)",
+                    Map.of("detalhe", msg)
+            );
+            return ResponseEntity.badRequest().contentType(MediaType.APPLICATION_JSON).body(response);
+        }
         log.error("{} -> 500: {}", requestLine(request), ex.getMessage(), ex);
         ErroResponse response = new ErroResponse(
                 Instant.now(),
