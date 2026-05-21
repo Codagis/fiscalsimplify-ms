@@ -47,6 +47,16 @@ public class SecurityConfig {
 
     @Bean
     @Order(Ordered.HIGHEST_PRECEDENCE)
+    public SecurityFilterChain healthSecurityFilterChain(HttpSecurity http) throws Exception {
+        return http
+                .securityMatcher("/health", "/actuator/**", "/actuator/health/**")
+                .authorizeHttpRequests(a -> a.anyRequest().permitAll())
+                .csrf(AbstractHttpConfigurer::disable)
+                .build();
+    }
+
+    @Bean
+    @Order(Ordered.HIGHEST_PRECEDENCE + 1)
     public SecurityFilterChain webhookSecurityFilterChain(HttpSecurity http) throws Exception {
         if (securityDisabled || !org.springframework.util.StringUtils.hasText(webhookSecret)) {
             return http.securityMatcher("/webhook/**").authorizeHttpRequests(a -> a.anyRequest().permitAll())
@@ -70,7 +80,7 @@ public class SecurityConfig {
     }
 
     @Bean
-    @Order(Ordered.HIGHEST_PRECEDENCE + 1)
+    @Order(Ordered.HIGHEST_PRECEDENCE + 2)
     public SecurityFilterChain swaggerSecurityFilterChain(HttpSecurity http) throws Exception {
         return http
                 .securityMatcher("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html")
@@ -80,7 +90,7 @@ public class SecurityConfig {
     }
 
     @Bean
-    @Order(Ordered.HIGHEST_PRECEDENCE + 2)
+    @Order(Ordered.HIGHEST_PRECEDENCE + 3)
     public SecurityFilterChain apiSecurityFilterChain(HttpSecurity http) throws Exception {
         if (securityDisabled || !org.springframework.util.StringUtils.hasText(apiKey)) {
             return http.securityMatcher("/companies/**", "/nfce/**", "/nfe/**")

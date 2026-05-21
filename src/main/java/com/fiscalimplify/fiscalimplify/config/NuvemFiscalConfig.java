@@ -21,19 +21,12 @@ import org.springframework.web.reactive.function.client.WebClient;
 public class NuvemFiscalConfig {
 
     private final OAuthService oauthService;
-    private final WebClient.Builder webClientBuilder;
 
     @Value("${nuvemfiscal.base-url}")
     private String baseUrl;
 
-    @Value("${nuvemfiscal.connect-timeout:10000}")
-    private int connectTimeout;
-
-    @Value("${nuvemfiscal.read-timeout:30000}")
-    private int readTimeout;
-
     @Bean("nuvemFiscalClient")
-    public WebClient nuvemFiscalClient() {
+    public WebClient nuvemFiscalClient(WebClient.Builder webClientBuilder) {
         return webClientBuilder
                 .baseUrl(baseUrl)
                 .defaultHeader(HttpHeaders.CONTENT_TYPE, "application/json")

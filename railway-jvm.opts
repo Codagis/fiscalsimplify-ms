@@ -1,16 +1,16 @@
-# JVM para containers Railway (RAM limitada). Usado via: java @railway-jvm.opts -jar app.jar
+# JVM Railway 1 vCPU / 2 GB: heap ~55% para sobrar RAM nativa (Netty, Tomcat, metaspace).
 -XX:+UseContainerSupport
--XX:MaxRAMPercentage=75.0
+-XX:MaxRAMPercentage=55.0
 -XX:InitialRAMPercentage=25.0
 -XX:MinRAMPercentage=20.0
 -XX:+UseG1GC
 -XX:MaxGCPauseMillis=200
 -XX:+UseStringDeduplication
--XX:MetaspaceSize=64m
--XX:MaxMetaspaceSize=128m
--XX:ReservedCodeCacheSize=48m
--XX:MaxDirectMemorySize=64m
--XX:+ExitOnOutOfMemoryError
+-XX:MetaspaceSize=96m
+-XX:MaxMetaspaceSize=192m
+-XX:ReservedCodeCacheSize=64m
+-XX:ParallelGCThreads=2
+-XX:ConcGCThreads=1
 -Xss512k
 -Djava.security.egd=file:/dev/./urandom
 -Dspring.backgroundpreinitializer.ignore=true

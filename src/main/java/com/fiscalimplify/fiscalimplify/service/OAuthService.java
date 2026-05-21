@@ -1,8 +1,8 @@
 package com.fiscalimplify.fiscalimplify.service;
 
 import jakarta.annotation.PostConstruct;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
@@ -23,14 +23,17 @@ import java.util.Map;
  */
 @Service
 @Slf4j
-@RequiredArgsConstructor
 public class OAuthService {
 
     private static final int MARGEM_SEGUNDOS = 60;
 
-    private final WebClient.Builder webClientBuilder;
+    private final ObjectProvider<WebClient.Builder> webClientBuilderProvider;
 
     private WebClient authClient;
+
+    public OAuthService(ObjectProvider<WebClient.Builder> webClientBuilderProvider) {
+        this.webClientBuilderProvider = webClientBuilderProvider;
+    }
 
     @Value("${nuvemfiscal.auth-url}")
     private String authUrl;
@@ -49,7 +52,7 @@ public class OAuthService {
 
     @PostConstruct
     void initAuthClient() {
-        authClient = webClientBuilder.baseUrl(authUrl).build();
+        authClient = webClientBuilderProvider.getObject().baseUrl(authUrl).build();
     }
 
     public synchronized String getToken() {
