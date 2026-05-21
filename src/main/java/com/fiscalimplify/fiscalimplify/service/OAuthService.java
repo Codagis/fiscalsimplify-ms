@@ -1,5 +1,7 @@
 package com.fiscalimplify.fiscalimplify.service;
 
+import jakarta.annotation.PostConstruct;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
@@ -21,9 +23,14 @@ import java.util.Map;
  */
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class OAuthService {
 
     private static final int MARGEM_SEGUNDOS = 60;
+
+    private final WebClient.Builder webClientBuilder;
+
+    private WebClient authClient;
 
     @Value("${nuvemfiscal.auth-url}")
     private String authUrl;
@@ -40,6 +47,11 @@ public class OAuthService {
     private volatile String token;
     private volatile LocalDateTime expiresAt;
 
+    @PostConstruct
+    void initAuthClient() {
+        authClient = webClientBuilder.baseUrl(authUrl).build();
+    }
+
     public synchronized String getToken() {
         if (token != null && expiresAt != null && expiresAt.isAfter(LocalDateTime.now())) {
             return token;
@@ -50,14 +62,13 @@ public class OAuthService {
     private String obterNovoToken() {
         log.debug("Obtendo novo token OAuth2 na Nuvem Fiscal (sandbox)");
 
-        WebClient client = WebClient.create(authUrl);
         MultiValueMap<String, String> formData = new LinkedMultiValueMap<>();
         formData.add("grant_type", "client_credentials");
         formData.add("client_id", clientId);
         formData.add("client_secret", clientSecret);
         formData.add("scope", scopes != null && !scopes.isBlank() ? scopes.trim() : "empresa nfe nfce");
 
-        Map<?, ?> response = client.post()
+        Map<?, ?> response = authClient.post()
                 .uri("/oauth/token")
                 .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                 .body(BodyInserters.fromFormData(formData))

@@ -13,13 +13,11 @@ WORKDIR /app
 
 COPY --from=build /app/target/*.jar app.jar
 
-# Usa o perfil homologação por padrão; pode ser sobrescrito no Railway via env.
-ENV SPRING_PROFILES_ACTIVE=homolog
+ENV SPRING_PROFILES_ACTIVE=homolog,railway
 
-# Ajustes leves para container: menor risco de estourar memória.
-ENV JAVA_TOOL_OPTIONS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=70 -XX:MinRAMPercentage=20"
+COPY railway-jvm.opts /app/railway-jvm.opts
 
 EXPOSE 8081
 
-CMD ["java","-jar","app.jar"]
+CMD ["java", "@/app/railway-jvm.opts", "-jar", "app.jar"]
 

@@ -21,6 +21,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 public class NuvemFiscalConfig {
 
     private final OAuthService oauthService;
+    private final WebClient.Builder webClientBuilder;
 
     @Value("${nuvemfiscal.base-url}")
     private String baseUrl;
@@ -33,7 +34,7 @@ public class NuvemFiscalConfig {
 
     @Bean("nuvemFiscalClient")
     public WebClient nuvemFiscalClient() {
-        return WebClient.builder()
+        return webClientBuilder
                 .baseUrl(baseUrl)
                 .defaultHeader(HttpHeaders.CONTENT_TYPE, "application/json")
                 .defaultHeader(HttpHeaders.ACCEPT, "application/json")
