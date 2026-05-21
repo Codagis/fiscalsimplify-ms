@@ -2,6 +2,7 @@ package com.fiscalimplify.fiscalimplify.config;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.env.EnvironmentPostProcessor;
+import org.springframework.core.Ordered;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.MapPropertySource;
 import org.springframework.util.StringUtils;
@@ -13,108 +14,109 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Garante spring.datasource.* a partir das variáveis do Postgres no Railway (PGHOST ou DATABASE_URL).
+ * Executa por ultimo: sobrescreve spring.datasource.* com URL real (PGHOST / DATABASE_URL).
  */
-public class RailwayDatabaseEnvironmentPostProcessor implements EnvironmentPostProcessor {
+public class RailwayDatabaseEnvironmentPostProcessor implements EnvironmentPostProcessor, Ordered {
 
     private static final String SOURCE = "railwayDatabaseUrl";
 
     @Override
+    public int getOrder() {
+        return Ordered.LOWEST_PRECEDENCE;
+    }
+
+    @Override
     public void postProcessEnvironment(ConfigurableEnvironment environment, SpringApplication application) {
-        if (!isRailwayDeployment(environment)) {
+        boolean railway = RailwayDeployment.isRailwayDeployment(environment);
+        boolean badUrl = RailwayDeployment.hasUnresolvedJdbcUrl(environment);
+        if (!railway && !badUrl) {
             return;
         }
 
-        String pgHost = environment.getProperty("PGHOST");
-        if (StringUtils.hasText(pgHost) && !isLocalHost(pgHost)) {
-            applyPostgresVariables(environment, pgHost);
+        if (badUrl) {
+            System.err.println("[Fiscalimplify] JDBC com placeholders detectada - reconfigurando a partir de PGHOST/DATABASE_URL");
+        }
+
+        if (applyFromPostgresEnv(environment) || applyFromDatabaseUrl(environment)) {
+            excludeDataSourceAutoConfig(environment);
             return;
         }
 
-        String databaseUrl = firstNonBlank(
+        if (badUrl) {
+            throw new IllegalStateException(
+                    "JDBC invalida no Railway. Variables -> Add Reference -> Postgres (PGHOST, PGPORT, PGDATABASE, PGUSER, PGPASSWORD). "
+                            + "Apague SPRING_DATASOURCE_URL manual se existir.");
+        }
+
+        if (railway && !RailwayDeployment.hasRailwayPostgresConfig(environment)) {
+            throw new IllegalStateException(
+                    "[Fiscalimplify] Postgres nao vinculado ao servico fiscalimplify. "
+                            + RailwayDeployment.describeDatabaseEnv(environment)
+                            + " -> Railway Variables -> Add Reference -> Postgres.");
+        }
+    }
+
+    private static boolean applyFromPostgresEnv(ConfigurableEnvironment environment) {
+        String host = RailwayDeployment.postgresHost(environment);
+        if (!RailwayDeployment.isRemotePostgresHost(host)) {
+            return false;
+        }
+        publish(
+                environment,
+                "jdbc:postgresql://" + host + ":" + RailwayDeployment.postgresPort(environment)
+                        + "/" + RailwayDeployment.postgresDatabase(environment),
+                RailwayDeployment.postgresUsername(environment),
+                RailwayDeployment.postgresPassword(environment)
+        );
+        return true;
+    }
+
+    private static boolean applyFromDatabaseUrl(ConfigurableEnvironment environment) {
+        String databaseUrl = RailwayDeployment.firstNonBlank(
                 environment.getProperty("DATABASE_PRIVATE_URL"),
                 environment.getProperty("DATABASE_URL")
         );
-        if (StringUtils.hasText(databaseUrl)) {
-            applyDatabaseUrl(environment, databaseUrl);
+        if (!StringUtils.hasText(databaseUrl)) {
+            return false;
         }
-    }
-
-    private static void applyPostgresVariables(ConfigurableEnvironment environment, String pgHost) {
-        String port = environment.getProperty("PGPORT", "5432");
-        String database = firstNonBlank(
-                environment.getProperty("PGDATABASE"),
-                environment.getProperty("DB_DATABASE"),
-                "railway"
-        );
-        String username = firstNonBlank(
-                environment.getProperty("PGUSER"),
-                environment.getProperty("DB_USERNAME"),
-                "postgres"
-        );
-        String password = firstNonBlank(
-                environment.getProperty("PGPASSWORD"),
-                environment.getProperty("DB_PASSWORD"),
-                ""
-        );
-
-        Map<String, Object> props = new HashMap<>();
-        props.put("spring.datasource.url", "jdbc:postgresql://" + pgHost + ":" + port + "/" + database);
-        props.put("spring.datasource.username", username);
-        props.put("spring.datasource.password", password);
-        environment.getPropertySources().addFirst(new MapPropertySource(SOURCE, props));
-    }
-
-    private static void applyDatabaseUrl(ConfigurableEnvironment environment, String databaseUrl) {
         try {
             ParsedPostgres parsed = parsePostgresUrl(databaseUrl);
-            Map<String, Object> props = new HashMap<>();
-            props.put("spring.datasource.url", parsed.jdbcUrl());
-            props.put("spring.datasource.username", firstNonBlank(
+            String username = RailwayDeployment.firstNonBlank(
                     environment.getProperty("PGUSER"),
                     environment.getProperty("DB_USERNAME"),
                     parsed.username()
-            ));
-            props.put("spring.datasource.password", firstNonBlank(
+            );
+            String password = RailwayDeployment.firstNonBlank(
                     environment.getProperty("PGPASSWORD"),
                     environment.getProperty("DB_PASSWORD"),
                     parsed.password()
-            ));
-            environment.getPropertySources().addFirst(new MapPropertySource(SOURCE, props));
-        } catch (Exception ignored) {
-            // YAML/variáveis PG* seguem como fallback
-        }
-    }
-
-    private static boolean isRailwayDeployment(ConfigurableEnvironment environment) {
-        if (StringUtils.hasText(environment.getProperty("RAILWAY_ENVIRONMENT"))
-                || StringUtils.hasText(environment.getProperty("RAILWAY_PROJECT_ID"))
-                || StringUtils.hasText(environment.getProperty("RAILWAY_SERVICE_ID"))) {
+            );
+            publish(environment, parsed.jdbcUrl(), username, password);
             return true;
+        } catch (Exception ex) {
+            System.err.println("[Fiscalimplify] DATABASE_URL invalida: " + ex.getMessage());
+            return false;
         }
-        String profiles = firstNonBlank(
-                environment.getProperty("SPRING_PROFILES_ACTIVE"),
-                environment.getProperty("spring.profiles.active")
-        );
-        if (profiles != null && profiles.contains("railway")) {
-            return true;
-        }
-        return StringUtils.hasText(environment.getProperty("PGHOST"))
-                || StringUtils.hasText(environment.getProperty("DATABASE_URL"))
-                || StringUtils.hasText(environment.getProperty("DATABASE_PRIVATE_URL"));
     }
 
-    private static boolean isLocalHost(String host) {
-        return "localhost".equalsIgnoreCase(host) || "127.0.0.1".equals(host);
+    private static void excludeDataSourceAutoConfig(ConfigurableEnvironment environment) {
+        Map<String, Object> bootstrap = new HashMap<>();
+        bootstrap.put("spring.autoconfigure.exclude[0]", RailwayDeployment.DATASOURCE_AUTO_CONFIG);
+        environment.getPropertySources().addFirst(new MapPropertySource("railwayBootstrap", bootstrap));
     }
 
-    private static String firstNonBlank(String... values) {
-        for (String value : values) {
-            if (StringUtils.hasText(value)) {
-                return value.trim();
-            }
+    private static void publish(ConfigurableEnvironment environment, String url, String username, String password) {
+        Map<String, Object> props = new HashMap<>();
+        props.put("spring.datasource.url", url);
+        props.put("spring.datasource.username", username);
+        props.put("spring.datasource.password", password);
+        environment.getPropertySources().addFirst(new MapPropertySource(SOURCE, props));
+        System.setProperty("spring.datasource.url", url);
+        System.setProperty("spring.datasource.username", username);
+        if (password != null) {
+            System.setProperty("spring.datasource.password", password);
         }
-        return null;
+        System.err.println("[Fiscalimplify] Datasource: " + url);
     }
 
     static ParsedPostgres parsePostgresUrl(String databaseUrl) {
@@ -141,8 +143,7 @@ public class RailwayDatabaseEnvironmentPostProcessor implements EnvironmentPostP
             }
         }
 
-        String jdbcUrl = "jdbc:postgresql://" + host + ":" + port + "/" + database;
-        return new ParsedPostgres(jdbcUrl, username, password);
+        return new ParsedPostgres("jdbc:postgresql://" + host + ":" + port + "/" + database, username, password);
     }
 
     private static String decode(String value) {
