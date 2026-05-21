@@ -8,6 +8,7 @@ import com.fiscalimplify.fiscalimplify.dto.NfceRequest;
 import com.fiscalimplify.fiscalimplify.dto.NfeRequest;
 import com.fiscalimplify.fiscalimplify.dto.PagamentoRequest;
 import com.fiscalimplify.fiscalimplify.exception.RegraNegocioException;
+import com.fiscalimplify.fiscalimplify.integration.nuvemfiscal.NuvemFiscalDfeStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -36,6 +37,8 @@ public class FiscalService {
 
     private static final String URI_NFCE = "/nfce";
     private static final String URI_NFE = "/nfe";
+    private static final String URI_NFCE_BY_ID = "/nfce/{id}";
+    private static final String URI_NFE_BY_ID = "/nfe/{id}";
     private static final String URI_NFCE_PDF = "/nfce/{id}/pdf";
     private static final String URI_NFE_PDF = "/nfe/{id}/pdf";
     private static final String VERSAO_NFE = "4.00";
@@ -60,6 +63,18 @@ public class FiscalService {
     @Value("${nuvemfiscal.ambiente:homologacao}")
     private String ambiente;
 
+    @Value("${nuvemfiscal.emissao.poll-interval-ms:2000}")
+    private int pollIntervalMs;
+
+    @Value("${nuvemfiscal.emissao.poll-max-wait-seconds:120}")
+    private int pollMaxWaitSeconds;
+
+    @Value("${nuvemfiscal.pdf.max-tentativas:12}")
+    private int pdfMaxTentativas;
+
+    @Value("${nuvemfiscal.pdf.delay-ms:2500}")
+    private int pdfDelayMs;
+
     public Map<String, Object> emitirNfce(NfceRequest request) {
         log.info("Emitindo NFC-e via Nuvem Fiscal: CNPJ {}", request.getCnpjEmitente());
 
@@ -73,7 +88,9 @@ public class FiscalService {
                 "infNFe", infNFe
         );
 
-        return executarPostJson(URI_NFCE, body, () -> log.debug("NFC-e enviada com sucesso"));
+        Map<String, Object> result = executarPostJson(URI_NFCE, body, () -> log.debug("NFC-e enviada com sucesso"));
+        validarRespostaEmissao(result, "NFC-e");
+        return result;
     }
 
     public Map<String, Object> emitirNfe(NfeRequest request) {
@@ -84,69 +101,21 @@ public class FiscalService {
                 "infNFe", montarInfNFeNfe(request)
         );
 
-        return executarPostJson(URI_NFE, body, () -> log.debug("NF-e enviada com sucesso"));
+        Map<String, Object> result = executarPostJson(URI_NFE, body, () -> log.debug("NF-e enviada com sucesso"));
+        validarRespostaEmissao(result, "NF-e");
+        return result;
     }
 
     public byte[] buscarPdfNfce(String id) {
         log.info("Buscando PDF da NFC-e: {}", id);
-        int maxTentativas = 8;
-        int delayMs = 3000;
-
-        for (int t = 0; t < maxTentativas; t++) {
-            try {
-                return executarGetPdf(URI_NFCE_PDF, id);
-            } catch (RuntimeException e) {
-                String msg = e.getMessage() != null ? e.getMessage() : "";
-                boolean xmlIndisponivel = msg.contains("EventoDfeXmlNotFound") || msg.contains("Xml não disponível") || msg.contains("404");
-                if (xmlIndisponivel && t < maxTentativas - 1) {
-                    log.info("PDF da NFC-e {} ainda não disponível. Aguardando {} ms antes da tentativa {}/{}.",
-                            id, delayMs, t + 2, maxTentativas);
-                    try {
-                        Thread.sleep(delayMs);
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                        throw new RegraNegocioException("Interrompido ao aguardar geração do PDF.", ie);
-                    }
-                } else if (xmlIndisponivel) {
-                    throw new RegraNegocioException(
-                            "O PDF da NFC-e ainda não está disponível na Nuvem Fiscal. A geração pode levar alguns minutos. Tente gerar o cupom fiscal novamente em instantes.");
-                } else {
-                    throw e;
-                }
-            }
-        }
-        throw new RegraNegocioException("PDF da NFC-e não disponível após " + maxTentativas + " tentativas. Tente novamente em alguns instantes.");
+        aguardarAutorizacaoDocumento(id, URI_NFCE_BY_ID, "NFC-e");
+        return baixarPdfComRetry(URI_NFCE_PDF, id, "NFC-e");
     }
 
     public byte[] buscarPdfNfe(String id) {
         log.info("Buscando PDF da NF-e: {}", id);
-        int maxTentativas = 8;
-        int delayMs = 3000;
-
-        for (int t = 0; t < maxTentativas; t++) {
-            try {
-                return executarGetPdf(URI_NFE_PDF, id);
-            } catch (RuntimeException e) {
-                String msg = e.getMessage() != null ? e.getMessage() : "";
-                boolean xmlIndisponivel = msg.contains("EventoDfeXmlNotFound") || msg.contains("Xml não disponível") || msg.contains("404");
-                if (xmlIndisponivel && t < maxTentativas - 1) {
-                    log.info("PDF da NF-e {} ainda não disponível. Aguardando {} ms antes da tentativa {}/{}.",
-                            id, delayMs, t + 2, maxTentativas);
-                    try {
-                        Thread.sleep(delayMs);
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                        throw new RegraNegocioException("Interrompido ao aguardar geração do PDF.", ie);
-                    }
-                } else if (xmlIndisponivel) {
-                    throw new RegraNegocioException(
-                            "O PDF da NF-e ainda não está disponível na Nuvem Fiscal. A geração pode levar alguns minutos. Tente gerar a NF-e novamente em instantes.");
-                } else {
-                    throw e;
-                }
-            }
-        }
-        throw new RegraNegocioException("PDF da NF-e não disponível após " + maxTentativas + " tentativas. Tente novamente em alguns instantes.");
+        aguardarAutorizacaoDocumento(id, URI_NFE_BY_ID, "NF-e");
+        return baixarPdfComRetry(URI_NFE_PDF, id, "NF-e");
     }
 
     private Map<String, Object> executarPostJson(String uri, Map<String, Object> body, Runnable onSuccess) {
@@ -166,10 +135,99 @@ public class FiscalService {
         return result != null ? result : Map.of();
     }
 
+    private void validarRespostaEmissao(Map<String, Object> doc, String tipoDocumento) {
+        if (doc == null || doc.isEmpty()) {
+            return;
+        }
+        if (NuvemFiscalDfeStatus.isRejeitado(doc)) {
+            throw new RegraNegocioException(tipoDocumento + " rejeitada pela SEFAZ: "
+                    + NuvemFiscalDfeStatus.extrairMotivo(doc));
+        }
+        String status = NuvemFiscalDfeStatus.extrairStatus(doc);
+        if (!status.isBlank()) {
+            log.info("{} emitida — status inicial: {}", tipoDocumento, status);
+        }
+    }
+
+    /**
+     * A Nuvem Fiscal so libera XML/PDF apos autorizacao na SEFAZ (status autorizado + chave).
+     */
+    private void aguardarAutorizacaoDocumento(String id, String uriConsulta, String tipoDocumento) {
+        long deadline = System.currentTimeMillis() + (pollMaxWaitSeconds * 1000L);
+        int tentativa = 0;
+
+        while (System.currentTimeMillis() < deadline) {
+            tentativa++;
+            Map<String, Object> doc = consultarDocumento(uriConsulta, id);
+            if (NuvemFiscalDfeStatus.isRejeitado(doc)) {
+                throw new RegraNegocioException(tipoDocumento + " rejeitada pela SEFAZ: "
+                        + NuvemFiscalDfeStatus.extrairMotivo(doc));
+            }
+            if (NuvemFiscalDfeStatus.isAutorizado(doc)) {
+                log.info("{} {} autorizada na SEFAZ (consulta #{})", tipoDocumento, id, tentativa);
+                return;
+            }
+            String status = NuvemFiscalDfeStatus.extrairStatus(doc);
+            log.info("{} {} aguardando SEFAZ — status='{}' (tentativa {})",
+                    tipoDocumento, id, status.isBlank() ? "pendente" : status, tentativa);
+            sleepQuietly(pollIntervalMs);
+        }
+
+        Map<String, Object> ultimo = consultarDocumento(uriConsulta, id);
+        throw new RegraNegocioException(tipoDocumento + " nao foi autorizada a tempo ("
+                + pollMaxWaitSeconds + "s). Ultimo status: " + NuvemFiscalDfeStatus.extrairStatus(ultimo)
+                + ". Motivo: " + NuvemFiscalDfeStatus.extrairMotivo(ultimo));
+    }
+
+    private Map<String, Object> consultarDocumento(String uriTemplate, String id) {
+        Map<String, Object> result = webClient.get()
+                .uri(uriTemplate, id)
+                .retrieve()
+                .onStatus(
+                        status -> status.is4xxClientError() || status.is5xxServerError(),
+                        resp -> resp.bodyToMono(String.class)
+                                .map(b -> new RuntimeException("Nuvem Fiscal: " + resp.statusCode() + " - " + b))
+                )
+                .bodyToMono(Map.class)
+                .block();
+        return result != null ? result : Map.of();
+    }
+
+    private byte[] baixarPdfComRetry(String uriTemplate, String id, String tipoDocumento) {
+        for (int t = 0; t < pdfMaxTentativas; t++) {
+            try {
+                byte[] pdf = executarGetPdf(uriTemplate, id);
+                if (pdf != null && pdf.length > 0) {
+                    log.info("PDF {} obtido ({} bytes)", tipoDocumento, pdf.length);
+                    return pdf;
+                }
+            } catch (RuntimeException e) {
+                String msg = e.getMessage() != null ? e.getMessage() : "";
+                boolean aguardar = msg.contains("EventoDfeXmlNotFound")
+                        || msg.contains("Xml não disponível")
+                        || msg.contains("Xml nao disponível")
+                        || msg.contains("404")
+                        || msg.contains("NOT_FOUND");
+                if (!aguardar || t >= pdfMaxTentativas - 1) {
+                    if (aguardar) {
+                        throw new RegraNegocioException(
+                                "PDF da " + tipoDocumento + " ainda nao disponivel na Nuvem Fiscal apos autorizacao. "
+                                        + "Tente baixar novamente em alguns instantes.");
+                    }
+                    throw e;
+                }
+                log.info("PDF {} {} — nova tentativa {}/{} em {}ms",
+                        tipoDocumento, id, t + 2, pdfMaxTentativas, pdfDelayMs);
+                sleepQuietly(pdfDelayMs);
+            }
+        }
+        throw new RegraNegocioException("PDF da " + tipoDocumento + " nao disponivel apos " + pdfMaxTentativas + " tentativas.");
+    }
+
     private byte[] executarGetPdf(String uriTemplate, String id) {
         return webClient.get()
                 .uri(uriTemplate, id)
-                .accept(MediaType.APPLICATION_PDF)
+                .accept(MediaType.APPLICATION_PDF, MediaType.ALL)
                 .retrieve()
                 .onStatus(
                         status -> status.is4xxClientError() || status.is5xxServerError(),
@@ -178,6 +236,15 @@ public class FiscalService {
                 )
                 .bodyToMono(byte[].class)
                 .block();
+    }
+
+    private static void sleepQuietly(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RegraNegocioException("Interrompido aguardando Nuvem Fiscal.", e);
+        }
     }
 
     private Map<String, Object> montarInfNFeNfce(NfceRequest request) {
@@ -205,8 +272,9 @@ public class FiscalService {
             }
         });
 
-        infNFe.put("det", mapearDetComDesconto(request.getItens(), crt, vProd, vDesc));
-        infNFe.put("total", Map.of("ICMSTot", montarIcmstot(vProd, vDesc, vNF, somarVTotTribItens(request.getItens(), vProd, vDesc))));
+        List<BigDecimal> vTotTribPorItem = distribuirVTotTribPorItens(request.getItens(), vProd, vDesc);
+        infNFe.put("det", mapearDetComDesconto(request.getItens(), crt, vProd, vDesc, vTotTribPorItem));
+        infNFe.put("total", Map.of("ICMSTot", montarIcmstot(vProd, vDesc, vNF, somarLista(vTotTribPorItem))));
         infNFe.put("transp", Map.of("modFrete", MOD_FRETE_SEM_FRETE));
         Map<String, Object> pag = new LinkedHashMap<>();
         List<Map<String, Object>> detPagList = mapearDetPag(request.getPagamentos(), vNF);
@@ -232,8 +300,9 @@ public class FiscalService {
         infNFe.put("ide", montarIde(MOD_NFE, request.getSerie(), request.getNaturezaOperacao(), TP_IMP_NFE, ufMun.cUF(), ufMun.cMunFG()));
         infNFe.put("emit", montarEmit(request.getCnpjEmitente(), obterIeEmitente(request.getCnpjEmitente(), request.getIeEmitente())));
         infNFe.put("dest", mapearDest(request.getDestinatario()));
-        infNFe.put("det", mapearDet(request.getItens(), crt));
-        infNFe.put("total", Map.of("ICMSTot", montarIcmstot(vProd, BigDecimal.ZERO, vProd, somarVTotTrib(request.getItens()))));
+        List<BigDecimal> vTotTribPorItem = distribuirVTotTribPorItens(request.getItens(), vProd, BigDecimal.ZERO);
+        infNFe.put("det", mapearDetComDesconto(request.getItens(), crt, null, null, vTotTribPorItem));
+        infNFe.put("total", Map.of("ICMSTot", montarIcmstot(vProd, BigDecimal.ZERO, vProd, somarLista(vTotTribPorItem))));
         infNFe.put("transp", Map.of("modFrete", MOD_FRETE_SEM_FRETE));
         infNFe.put("pag", Map.of("detPag", List.of(Map.of("tPag", "90", "vPag", BigDecimal.ZERO))));
 
@@ -330,22 +399,28 @@ public class FiscalService {
         );
     }
 
-    private List<Map<String, Object>> mapearDet(List<ItemRequest> itens, int crt) {
-        return mapearDetComDesconto(itens, crt, null, null);
-    }
+    private List<Map<String, Object>> mapearDetComDesconto(
+            List<ItemRequest> itens,
+            int crt,
+            BigDecimal vProdTotal,
+            BigDecimal vDescTotal,
+            List<BigDecimal> vTotTribPorItem) {
 
-    private List<Map<String, Object>> mapearDetComDesconto(List<ItemRequest> itens, int crt, BigDecimal vProdTotal, BigDecimal vDescTotal) {
         boolean simplesNacional = (crt == 1 || crt == 4);
         List<Map<String, Object>> det = new ArrayList<>();
         int n = 1;
 
         List<BigDecimal> vDescPorItem = distribuirDescontoPorItens(itens, vProdTotal, vDescTotal);
+        List<BigDecimal> tribItens = vTotTribPorItem != null
+                ? vTotTribPorItem
+                : distribuirVTotTribPorItens(itens, vProdTotal, vDescTotal);
 
         for (int i = 0; i < itens.size(); i++) {
             ItemRequest item = itens.get(i);
             BigDecimal itemVDesc = (vDescPorItem != null && i < vDescPorItem.size()) ? vDescPorItem.get(i) : BigDecimal.ZERO;
+            BigDecimal itemVTotTrib = i < tribItens.size() ? tribItens.get(i) : BigDecimal.ZERO;
             Map<String, Object> prod = montarProduto(item, n, itemVDesc);
-            Map<String, Object> imposto = montarImposto(simplesNacional);
+            Map<String, Object> imposto = montarImposto(simplesNacional, itemVTotTrib);
             det.add(Map.of("nItem", n, "prod", prod, "imposto", imposto));
             n++;
         }
@@ -402,7 +477,6 @@ public class FiscalService {
         prod.put("qTrib", item.getQuantidade());
         prod.put("vUnTrib", item.getValorUnitario());
         prod.put("indTot", 1);
-        // vTotTrib apenas no total (ICMSTot) — API Nuvem Fiscal nao aceita no TProd do item
         return prod;
     }
 
@@ -421,39 +495,65 @@ public class FiscalService {
                 .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
     }
 
-    private BigDecimal somarVTotTrib(List<ItemRequest> itens) {
-        return somarVTotTribItens(itens, null, null);
-    }
+    /**
+     * vTotTrib por item (bloco imposto) com ajuste no ultimo item para bater com ICMSTot (regra SEFAZ).
+     */
+    private List<BigDecimal> distribuirVTotTribPorItens(
+            List<ItemRequest> itens,
+            BigDecimal vProdTotal,
+            BigDecimal vDescTotal) {
 
-    /** Soma tributos aproximados (Lei 12.741) para ICMSTot.vTotTrib — nao enviar por item no JSON Nuvem Fiscal. */
-    private BigDecimal somarVTotTribItens(List<ItemRequest> itens, BigDecimal vProdTotal, BigDecimal vDescTotal) {
         if (itens == null || itens.isEmpty()) {
-            return BigDecimal.ZERO;
+            return List.of();
         }
         List<BigDecimal> vDescPorItem = distribuirDescontoPorItens(itens, vProdTotal, vDescTotal);
-        BigDecimal total = BigDecimal.ZERO;
+        List<BigDecimal> result = new ArrayList<>();
+        BigDecimal acumulado = BigDecimal.ZERO;
+        BigDecimal totalBruto = BigDecimal.ZERO;
+
         for (int i = 0; i < itens.size(); i++) {
-            BigDecimal itemVDesc = (vDescPorItem != null && i < vDescPorItem.size())
-                    ? vDescPorItem.get(i)
-                    : BigDecimal.ZERO;
-            total = total.add(calcularVTotTribItem(itens.get(i), itemVDesc));
+            BigDecimal itemVDesc = (vDescPorItem != null && i < vDescPorItem.size()) ? vDescPorItem.get(i) : BigDecimal.ZERO;
+            totalBruto = totalBruto.add(calcularVTotTribItem(itens.get(i), itemVDesc));
         }
-        return total.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal totalArredondado = totalBruto.setScale(2, RoundingMode.HALF_UP);
+
+        for (int i = 0; i < itens.size(); i++) {
+            if (i == itens.size() - 1) {
+                result.add(totalArredondado.subtract(acumulado).setScale(2, RoundingMode.HALF_UP));
+            } else {
+                BigDecimal itemVDesc = (vDescPorItem != null && i < vDescPorItem.size()) ? vDescPorItem.get(i) : BigDecimal.ZERO;
+                BigDecimal v = calcularVTotTribItem(itens.get(i), itemVDesc).setScale(2, RoundingMode.HALF_UP);
+                result.add(v);
+                acumulado = acumulado.add(v);
+            }
+        }
+        return result;
     }
 
-    private Map<String, Object> montarImposto(boolean simplesNacional) {
-        if (simplesNacional) {
-            return Map.of(
-                    "ICMS", Map.of("ICMSSN102", Map.of("orig", 0, "CSOSN", "102")),
-                    "PIS", Map.of("PISNT", Map.of("CST", "08")),
-                    "COFINS", Map.of("COFINSNT", Map.of("CST", "08"))
-            );
+    private static BigDecimal somarLista(List<BigDecimal> valores) {
+        if (valores == null || valores.isEmpty()) {
+            return BigDecimal.ZERO;
         }
-        return Map.of(
-                "ICMS", Map.of("ICMS00", Map.of("orig", 0, "CST", "00", "modBC", 3, "vBC", 0, "pICMS", 0, "vICMS", 0)),
-                "PIS", Map.of("PISNT", Map.of("CST", "08")),
-                "COFINS", Map.of("COFINSNT", Map.of("CST", "08"))
-        );
+        return valores.stream()
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private Map<String, Object> montarImposto(boolean simplesNacional, BigDecimal vTotTribItem) {
+        Map<String, Object> imposto = new LinkedHashMap<>();
+        if (simplesNacional) {
+            imposto.put("ICMS", Map.of("ICMSSN102", Map.of("orig", 0, "CSOSN", "102")));
+            imposto.put("PIS", Map.of("PISNT", Map.of("CST", "08")));
+            imposto.put("COFINS", Map.of("COFINSNT", Map.of("CST", "08")));
+        } else {
+            imposto.put("ICMS", Map.of("ICMS00", Map.of("orig", 0, "CST", "00", "modBC", 3, "vBC", 0, "pICMS", 0, "vICMS", 0)));
+            imposto.put("PIS", Map.of("PISNT", Map.of("CST", "08")));
+            imposto.put("COFINS", Map.of("COFINSNT", Map.of("CST", "08")));
+        }
+        if (vTotTribItem != null && vTotTribItem.compareTo(BigDecimal.ZERO) > 0) {
+            imposto.put("vTotTrib", vTotTribItem.setScale(2, RoundingMode.HALF_UP));
+        }
+        return imposto;
     }
 
     private List<Map<String, Object>> mapearDetPag(List<PagamentoRequest> pagamentos, BigDecimal vNF) {

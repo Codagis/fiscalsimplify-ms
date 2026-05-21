@@ -7,7 +7,11 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpHeaders;
 import org.springframework.web.reactive.function.client.ClientRequest;
+import org.springframework.http.client.reactive.ReactorClientHttpConnector;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.netty.http.client.HttpClient;
+
+import java.time.Duration;
 
 /**
  * Configuração responsável pelo bean WebClient para comunicação com a API Nuvem Fiscal.
@@ -27,7 +31,11 @@ public class NuvemFiscalConfig {
 
     @Bean("nuvemFiscalClient")
     public WebClient nuvemFiscalClient(WebClient.Builder webClientBuilder) {
+        HttpClient httpClient = HttpClient.create()
+                .compress(true)
+                .responseTimeout(Duration.ofSeconds(180));
         return webClientBuilder
+                .clientConnector(new ReactorClientHttpConnector(httpClient))
                 .baseUrl(baseUrl)
                 .defaultHeader(HttpHeaders.CONTENT_TYPE, "application/json")
                 .defaultHeader(HttpHeaders.ACCEPT, "application/json")
