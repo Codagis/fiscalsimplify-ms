@@ -1,5 +1,6 @@
 package com.fiscalimplify.fiscalimplify.integration.nuvemfiscal;
 
+import com.fiscalimplify.fiscalimplify.exception.NuvemFiscalRateLimitException;
 import com.fiscalimplify.fiscalimplify.dto.DistNfeConfigRequest;
 import com.fiscalimplify.fiscalimplify.dto.NfcConfigRequest;
 import com.fiscalimplify.fiscalimplify.dto.NfeConfigRequest;
@@ -487,7 +488,40 @@ public class NuvemFiscalService {
                 : "Municipio";
     }
 
+    private static final int MAX_ATTEMPTS = 4;
+    private static final long INITIAL_BACKOFF_MS = 2_000;
+    private static final long MAX_BACKOFF_MS = 15_000;
+
     private Map<String, Object> executarRequest(
+            Supplier<WebClient.RequestHeadersSpec<?>> requestBuilder,
+            Runnable onSuccess) {
+
+        long backoffMs = INITIAL_BACKOFF_MS;
+        RuntimeException lastError = null;
+
+        for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            try {
+                return executarRequestOnce(requestBuilder, onSuccess);
+            } catch (RuntimeException ex) {
+                lastError = ex;
+                if (!isTooManyRequests(ex) || attempt >= MAX_ATTEMPTS) {
+                    if (isTooManyRequests(ex)) {
+                        throw new NuvemFiscalRateLimitException(
+                                "Nuvem Fiscal: limite de requisicoes (429). Aguarde alguns segundos e tente novamente.",
+                                ex);
+                    }
+                    throw ex;
+                }
+                log.warn("Nuvem Fiscal 429 TOO_MANY_REQUESTS — tentativa {}/{}, aguardando {}ms",
+                        attempt, MAX_ATTEMPTS, backoffMs);
+                sleepQuietly(backoffMs);
+                backoffMs = Math.min(backoffMs * 2, MAX_BACKOFF_MS);
+            }
+        }
+        throw lastError != null ? lastError : new RuntimeException("Nuvem Fiscal: falha desconhecida");
+    }
+
+    private Map<String, Object> executarRequestOnce(
             Supplier<WebClient.RequestHeadersSpec<?>> requestBuilder,
             Runnable onSuccess) {
 
@@ -503,5 +537,27 @@ public class NuvemFiscalService {
                 .block();
 
         return result != null ? result : Map.of();
+    }
+
+    private static boolean isTooManyRequests(Throwable ex) {
+        for (Throwable t = ex; t != null; t = t.getCause()) {
+            if (t instanceof WebClientResponseException w && w.getStatusCode().value() == 429) {
+                return true;
+            }
+            String message = t.getMessage();
+            if (message != null && (message.contains("429") || message.contains("TOO_MANY_REQUESTS"))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void sleepQuietly(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Interrompido aguardando Nuvem Fiscal", e);
+        }
     }
 }

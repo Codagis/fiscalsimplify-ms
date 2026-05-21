@@ -67,6 +67,20 @@ public class ApiExceptionHandler {
         return ResponseEntity.status(ex.getStatusCode()).contentType(MediaType.APPLICATION_JSON).body(response);
     }
 
+    @ExceptionHandler(NuvemFiscalRateLimitException.class)
+    public ResponseEntity<ErroResponse> handleNuvemFiscalRateLimit(NuvemFiscalRateLimitException ex, WebRequest request) {
+        log.warn("{} -> 429 Nuvem Fiscal: {}", requestLine(request), ex.getMessage());
+        ErroResponse response = new ErroResponse(
+                Instant.now(),
+                HttpStatus.TOO_MANY_REQUESTS.value(),
+                ex.getMessage(),
+                Map.of("origem", "nuvemfiscal", "dica", "Sandbox tem limite de chamadas; aguarde e repita.")
+        );
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(response);
+    }
+
     @ExceptionHandler(RegraNegocioException.class)
     public ResponseEntity<ErroResponse> handleRegraNegocio(RegraNegocioException ex, WebRequest request) {
         log.warn("{} -> 422: {}", requestLine(request), ex.getMessage());
