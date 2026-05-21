@@ -1,7 +1,10 @@
 package com.fiscalimplify.fiscalimplify.exception;
 
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.context.request.ServletWebRequest;
+import org.springframework.web.context.request.WebRequest;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -26,8 +29,18 @@ import java.util.stream.Collectors;
 @Slf4j
 public class ApiExceptionHandler {
 
+    private static String requestLine(WebRequest request) {
+        if (request instanceof ServletWebRequest servlet) {
+            HttpServletRequest req = servlet.getRequest();
+            String q = req.getQueryString();
+            return req.getMethod() + " " + req.getRequestURI() + (q != null ? "?" + q : "");
+        }
+        return "?";
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ErroResponse> handleValidation(MethodArgumentNotValidException ex) {
+    public ResponseEntity<ErroResponse> handleValidation(MethodArgumentNotValidException ex, WebRequest request) {
+        log.warn("{} -> 400 validação: {}", requestLine(request), ex.getBindingResult().getFieldErrors());
         List<FieldError> errors = ex.getBindingResult().getFieldErrors();
         Map<String, String> detalhes = errors.stream()
                 .collect(Collectors.toMap(FieldError::getField, e -> e.getDefaultMessage() != null ? e.getDefaultMessage() : "inválido"));
@@ -42,8 +55,8 @@ public class ApiExceptionHandler {
     }
 
     @ExceptionHandler(WebClientResponseException.class)
-    public ResponseEntity<ErroResponse> handleNuvemFiscal(WebClientResponseException ex) {
-        log.error("Erro na API Nuvem Fiscal: {} - {}", ex.getStatusCode(), ex.getResponseBodyAsString());
+    public ResponseEntity<ErroResponse> handleNuvemFiscal(WebClientResponseException ex, WebRequest request) {
+        log.error("{} -> Nuvem Fiscal {}: {}", requestLine(request), ex.getStatusCode(), ex.getResponseBodyAsString());
 
         ErroResponse response = new ErroResponse(
                 Instant.now(),
@@ -55,7 +68,8 @@ public class ApiExceptionHandler {
     }
 
     @ExceptionHandler(RegraNegocioException.class)
-    public ResponseEntity<ErroResponse> handleRegraNegocio(RegraNegocioException ex) {
+    public ResponseEntity<ErroResponse> handleRegraNegocio(RegraNegocioException ex, WebRequest request) {
+        log.warn("{} -> 422: {}", requestLine(request), ex.getMessage());
         ErroResponse response = new ErroResponse(
                 Instant.now(),
                 HttpStatus.UNPROCESSABLE_ENTITY.value(),
@@ -66,8 +80,8 @@ public class ApiExceptionHandler {
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ErroResponse> handleGenerica(Exception ex) {
-        log.error("Erro interno", ex);
+    public ResponseEntity<ErroResponse> handleGenerica(Exception ex, WebRequest request) {
+        log.error("{} -> 500: {}", requestLine(request), ex.getMessage(), ex);
         ErroResponse response = new ErroResponse(
                 Instant.now(),
                 HttpStatus.INTERNAL_SERVER_ERROR.value(),

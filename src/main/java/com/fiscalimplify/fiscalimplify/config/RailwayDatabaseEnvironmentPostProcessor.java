@@ -21,7 +21,7 @@ public class RailwayDatabaseEnvironmentPostProcessor implements EnvironmentPostP
 
     @Override
     public void postProcessEnvironment(ConfigurableEnvironment environment, SpringApplication application) {
-        if (!isRailwayProfile(environment)) {
+        if (!isRailwayDeployment(environment)) {
             return;
         }
 
@@ -86,15 +86,22 @@ public class RailwayDatabaseEnvironmentPostProcessor implements EnvironmentPostP
         }
     }
 
-    private static boolean isRailwayProfile(ConfigurableEnvironment environment) {
-        if (environment.acceptsProfiles(org.springframework.core.env.Profiles.of("railway"))) {
+    private static boolean isRailwayDeployment(ConfigurableEnvironment environment) {
+        if (StringUtils.hasText(environment.getProperty("RAILWAY_ENVIRONMENT"))
+                || StringUtils.hasText(environment.getProperty("RAILWAY_PROJECT_ID"))
+                || StringUtils.hasText(environment.getProperty("RAILWAY_SERVICE_ID"))) {
             return true;
         }
         String profiles = firstNonBlank(
                 environment.getProperty("SPRING_PROFILES_ACTIVE"),
                 environment.getProperty("spring.profiles.active")
         );
-        return profiles != null && profiles.contains("railway");
+        if (profiles != null && profiles.contains("railway")) {
+            return true;
+        }
+        return StringUtils.hasText(environment.getProperty("PGHOST"))
+                || StringUtils.hasText(environment.getProperty("DATABASE_URL"))
+                || StringUtils.hasText(environment.getProperty("DATABASE_PRIVATE_URL"));
     }
 
     private static boolean isLocalHost(String host) {

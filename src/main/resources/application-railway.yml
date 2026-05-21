@@ -1,4 +1,4 @@
-# Perfil railway (1 vCPU / 2 GB). Ative: SPRING_PROFILES_ACTIVE=homolog,railway
+# Perfil railway — memória otimizada (1 vCPU / 2 GB).
 
 server:
   address: 0.0.0.0
@@ -6,10 +6,10 @@ server:
   forward-headers-strategy: framework
   tomcat:
     threads:
-      max: ${TOMCAT_MAX_THREADS:60}
-      min-spare: 8
-    max-connections: 150
-    accept-count: 40
+      max: ${TOMCAT_MAX_THREADS:40}
+      min-spare: 2
+    max-connections: ${TOMCAT_MAX_CONNECTIONS:80}
+    accept-count: 25
     connection-timeout: 20s
   compression:
     enabled: ${SERVER_COMPRESSION_ENABLED:true}
@@ -18,6 +18,10 @@ server:
 spring:
   main:
     banner-mode: off
+    lazy-initialization: false
+  threads:
+    virtual:
+      enabled: ${SPRING_THREADS_VIRTUAL:true}
   jmx:
     enabled: false
   datasource:
@@ -25,21 +29,25 @@ spring:
     username: ${PGUSER:${DB_USERNAME:postgres}}
     password: ${PGPASSWORD:${DB_PASSWORD:postgres}}
     hikari:
-      maximum-pool-size: ${HIKARI_MAX_POOL_SIZE:8}
-      minimum-idle: ${HIKARI_MIN_IDLE:2}
-      connection-timeout: 20000
+      maximum-pool-size: ${HIKARI_MAX_POOL_SIZE:4}
+      minimum-idle: ${HIKARI_MIN_IDLE:1}
+      connection-timeout: 15000
       initialization-fail-timeout: 60000
       max-lifetime: 600000
-      idle-timeout: 180000
+      idle-timeout: 120000
+      leak-detection-threshold: 0
   jpa:
+    show-sql: false
     properties:
       hibernate:
         generate_statistics: false
         format_sql: false
+        default_batch_fetch_size: 8
         jdbc:
           batch_size: 20
+          fetch_size: 50
         query:
-          plan_cache_max_size: 64
+          plan_cache_max_size: 32
           in_clause_parameter_padding: false
         cache:
           use_second_level_cache: false
@@ -47,17 +55,27 @@ spring:
   task:
     scheduling:
       pool:
-        size: 2
+        size: 1
     execution:
       pool:
-        core-size: 2
-        max-size: 4
-        queue-capacity: 50
+        core-size: 1
+        max-size: 2
+        queue-capacity: 25
   codec:
-    max-in-memory-size: ${WEBCLIENT_MAX_IN_MEMORY:2097152}
+    max-in-memory-size: ${WEBCLIENT_MAX_IN_MEMORY:1048576}
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
 
 logging:
   level:
-    org.hibernate: WARN
-    org.springframework: WARN
-    com.zaxxer.hikari.HikariConfig: INFO
+    root: INFO
+    com.fiscalimplify: ${APP_LOG_LEVEL:INFO}
+    org.springframework.web: WARN
+    org.springframework.security: WARN
+    org.hibernate.SQL: ${SQL_LOG_LEVEL:WARN}
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n"

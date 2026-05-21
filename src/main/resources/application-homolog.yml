@@ -4,8 +4,8 @@ spring:
     username: ${PGUSER:${DB_USERNAME:postgres}}
     password: ${PGPASSWORD:${DB_PASSWORD:postgres}}
     hikari:
-      maximum-pool-size: 8
-      minimum-idle: 2
+      maximum-pool-size: 4
+      minimum-idle: 1
       connection-timeout: 20000
       idle-timeout: 300000
       max-lifetime: 1200000
@@ -29,6 +29,7 @@ springdoc:
     enabled: ${SPRINGDOC_ENABLED:false}
 
 server:
+  address: 0.0.0.0
   port: ${PORT:8081}
   compression:
     enabled: ${SERVER_COMPRESSION_ENABLED:false}
@@ -38,6 +39,8 @@ server:
 
 logging:
   level:
-    com.fiscalimplify: INFO
-    org.springframework: WARN
+    root: INFO
+    com.fiscalimplify: ${APP_LOG_LEVEL:INFO}
+    org.springframework.web: WARN
+    org.springframework.security: WARN
 

@@ -23,11 +23,12 @@ public class RailwayRuntimeConfig {
     @Bean(destroyMethod = "dispose")
     public ConnectionProvider railwayConnectionProvider() {
         return ConnectionProvider.builder("fiscalimplify-http")
-                .maxConnections(24)
-                .maxIdleTime(Duration.ofSeconds(30))
-                .maxLifeTime(Duration.ofMinutes(5))
-                .pendingAcquireTimeout(Duration.ofSeconds(10))
-                .evictInBackground(Duration.ofSeconds(120))
+                .maxConnections(10)
+                .maxIdleTime(Duration.ofSeconds(20))
+                .maxLifeTime(Duration.ofMinutes(3))
+                .pendingAcquireMaxCount(20)
+                .pendingAcquireTimeout(Duration.ofSeconds(8))
+                .evictInBackground(Duration.ofSeconds(60))
                 .build();
     }
 
