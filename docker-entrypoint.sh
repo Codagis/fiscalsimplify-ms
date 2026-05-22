@@ -3,10 +3,9 @@ set -e
 
 PORT="${PORT:-8080}"
 
-JVM_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=50.0 -XX:InitialRAMPercentage=20.0 \
--XX:+UseG1GC -XX:+UseStringDeduplication -XX:MaxMetaspaceSize=160m -XX:ReservedCodeCacheSize=48m \
--XX:MaxGCPauseMillis=150 -XX:ParallelGCThreads=1 -XX:ConcGCThreads=1 -Xss512k \
--Dspring.backgroundpreinitializer.ignore=true"
+JVM_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=65.0 -XX:InitialRAMPercentage=25.0 \
+-XX:+UseG1GC -XX:+UseStringDeduplication -XX:MaxMetaspaceSize=192m -XX:ReservedCodeCacheSize=64m \
+-XX:MaxGCPauseMillis=200 -Xss512k -Dspring.backgroundpreinitializer.ignore=true"
 
 POSTGRES_HOST="${PGHOST:-${DB_HOST}}"
 
